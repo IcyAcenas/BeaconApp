@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beacon</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <header class="top-bar">
+
+        <div class="beaconlogo">
+            <img src="beacon-logo.png" alt="Beacon Logo"/>
+        </div>
+
+        <div class="userprofile">
+            <button class="profile-button" onclick="openProfile()">
+                <img src="profile-icon.png" alt="User Profile Setting"/>
+            </button>
+        </div>
+
+        <div class="searchbar">
+            <span class="search-icon">🔍</span>
+            <input type="text" placeholder="Search for a location..."/>
+            <button class="clearsearch" onclick="clearSearch()">✖</button>
+        </div>
+
+    </header>
+
+    <div id="warning">
+
+        <div id="warningheader">
+            <span id="warningicon">⚠️</span>
+            <h2 id="warningtitle">WARNING!</h2>
+        </div>
+
+        <p id="warningtext">Flash Flood reported within 300 meters</p>
+
+    </div>
+
+    <div id="PullUpSection">
+
+    <div id="PullUpHandle"></div>
+
+    <h3 id="PullUpSectionTitle">ACTIVE HAZARDS</h3>
+
+    <div id="PullUpSectionContent">
+
+        <div class="hazardcard" data-hazard="flashfloods" onclick="selectHazard('flashfloods')">
+            <div class="hazardimagewhole">
+                <img id="floodlatest" src="flood.jpg" alt="Flash Floods" class="hazardimage"/>
+                <div class="reporterinfo">
+                    <img id="flooduserphoto" src="userphoto.jpg" alt="Reporter 1" class="userimagecard"/>
+                    <div class="reporternameandtime">
+                        <span id="floodreportername" class="reportername">Euan Mercado</span>
+                        <span id="floodreporttime" class="reporttime">5 minutes ago</span>
+                    </div>
+                </div>
+            </div>
+        
+            <div class="hazardclassdetails">
+                <svg class="hazard-pin pin-blue" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+                <div class="hazardtextdetails">
+                    <span id="floodtitlecard" class="hazardtitlecard">FLASH FLOODS</span>
+                    <div class="hazardstatus">
+                        <span id="floodstatus" class="status-dot dot-red"></span>
+                        <span id="flooddescriptioncard" class="hazarddescriptioncard">2 active</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hazardcard" data-hazard="accidents" onclick="selectHazard('accidents')">
+            <div class="hazardimagewhole">
+                <img id="accidentlatest" src="accident.jpg" alt="Accidents" class="hazardimage"/>
+                <div class="reporterinfo">
+                    <img id="accidentuserphoto" src="userphoto2.jpg" alt="Reporter 2" class="userimagecard"/>
+                    <div class="reporternameandtime">
+                        <span id="accidentreportername" class="reportername">Icy Acenas</span>
+                        <span id="accidentreporttime" class="reporttime">12 minutes ago</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hazardclassdetails">
+                <svg class="hazard-pin pin-red" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+                <div class="hazardtextdetails">
+                    <span id="accidenttitlecard" class="hazardtitlecard">ACCIDENTS</span>
+                    <div class="hazardstatus">
+                        <span id="accidentstatus" class="status-dot dot-red"></span>
+                        <span id="accidentdescriptioncard" class="hazarddescriptioncard">1 active</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hazardcard" data-hazard="fires" onclick="selectHazard('fires')">
+            <div class="hazardimagewhole">
+                <img id="firelatest" src="fire.jpg" alt="Fires" class="hazardimage"/>
+                <div class="reporterinfo">
+                    <img id="fireuserphoto" src="userphoto3.jpg" alt="Reporter 3" class="userimagecard"/>
+                    <div class="reporternameandtime">
+                        <span id="firereportername" class="reportername">Mitchie Bagaporo</span>
+                        <span id="firereporttime" class="reporttime">30 minutes ago</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hazardclassdetails">
+                <svg class="hazard-pin pin-orange" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+                <div class="hazardtextdetails">
+                    <span id="firetitlecard" class="hazardtitlecard">FIRES</span>
+                    <div class="hazardstatus">
+                        <span id="firestatus" class="status-dot dot-red"></span>
+                        <span id="firedescriptioncard" class="hazarddescriptioncard">1 active</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hazardcard" data-hazard="landslides" onclick="selectHazard('landslides')">
+            <div class="hazardimagewhole">
+                <img id="landslidelatest" src="landslide.jpg" alt="Landslides" class="hazardimage"/>
+                <div class="reporterinfo">
+                    <img id="landslideuserphoto" src="userphoto4.jpg" alt="Reporter 4" class="userimagecard"/>
+                    <div class="reporternameandtime">
+                        <span id="landslidereportername" class="reportername">Francis King Uyguangco</span>
+                        <span id="landslidereporttime" class="reporttime">2 hours ago</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hazardclassdetails">
+                <svg class="hazard-pin pin-brown" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                </svg>
+                <div class="hazardtextdetails">
+                    <span id="landslidetitlecard" class="hazardtitlecard">LANDSLIDES</span>
+                    <div class="hazardstatus">
+                        <span id="landslidestatus" class="status-dot dot-green"></span>
+                        <span id="landslidedescriptioncard" class="hazarddescriptioncard">Resolved</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
