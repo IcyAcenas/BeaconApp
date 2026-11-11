@@ -43,6 +43,52 @@
 
     </div>
 
+    <button id="reportButton" class="report-button" onclick="openReportForm()">Report Hazard</button>
+
+    <div id="reportModal" class="report-modal">
+        <div class="report-panel">
+            <button class="report-close" onclick="closeReportForm()">✕</button>
+            <h3>Report Hazard</h3>
+            <form id="hazardReportForm">
+                <label>
+                    Hazard Type
+                    <select id="hazardType" required>
+                        <option value="">Select a hazard</option>
+                        <option value="flashfloods">Flash Flood</option>
+                        <option value="accidents">Accident</option>
+                        <option value="fires">Fire</option>
+                        <option value="landslides">Landslide</option>
+                    </select>
+                </label>
+
+                <label>
+                    Intensity
+                    <select id="hazardIntensity" required>
+                        <option value="">Select intensity</option>
+                        <option value="high">High</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="low">Low</option>
+                    </select>
+                </label>
+
+                <label>
+                    Area / Location
+                    <input id="hazardLocation" type="text" placeholder="e.g. Barangay 8, Cagayan de Oro City" required>
+                </label>
+
+                <label>
+                    Details
+                    <textarea id="hazardDetails" rows="3" placeholder="Add a short description"></textarea>
+                </label>
+
+                <div class="report-actions">
+                    <button type="button" class="secondary-btn" onclick="closeReportForm()">Cancel</button>
+                    <button type="submit" class="primary-btn">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="PullUpSection">
 
     <div id="PullUpHandle"></div>
