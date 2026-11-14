@@ -21,6 +21,139 @@ const searchInput = document.querySelector('.searchbar input');
 const reportModal = document.getElementById('reportModal');
 const hazardReportForm = document.getElementById('hazardReportForm');
 
+const FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyCR8BE6AqdhvwtwiCjymPFpJTIhqjgH_Xo',
+    authDomain: 'beaconapp-91c14.firebaseapp.com',
+    projectId: 'beaconapp-91c14',
+    storageBucket: 'beaconapp-91c14.firebasestorage.app',
+    messagingSenderId: '31295353440',
+    appId: '1:31295353440:web:112da096e26fd837684905',
+    measurementId: 'G-E11EM4J0W7'
+};
+let authMode = 'login';
+let currentUser = null;
+let firebase = null;
+
+async function initializeFirebase() {
+    const message = document.getElementById('authMessage');
+    try {
+        const version = '13.3.0';
+        const [appSdk, authSdk, dbSdk] = await Promise.all([
+            import(`https://www.gstatic.com/firebasejs/${version}/firebase-app.js`),
+            import(`https://www.gstatic.com/firebasejs/${version}/firebase-auth.js`),
+            import(`https://www.gstatic.com/firebasejs/${version}/firebase-firestore.js`)
+        ]);
+        const app = appSdk.initializeApp(FIREBASE_CONFIG);
+        const auth = authSdk.getAuth(app);
+        const db = dbSdk.getFirestore(app);
+        firebase = { authSdk, dbSdk, auth, db, provider: new authSdk.GoogleAuthProvider() };
+        authSdk.onAuthStateChanged(auth, async (user) => {
+            if (!user) return;
+            try {
+                const profile = await saveFirebaseProfile(user, document.querySelector('input[name="role"]:checked').value);
+                enterApp(profile);
+            } catch (error) {
+                document.getElementById('authGate').hidden = false;
+                message.textContent = `Signed in, but couldn't load your Firestore profile: ${error.message}`;
+            }
+        });
+    } catch (error) {
+        console.error('Firebase initialization failed:', error);
+        message.textContent = 'Firebase could not initialize. Check your internet connection and open Beacon from a local web server.';
+    }
+}
+
+initializeFirebase();
+
+async function saveFirebaseProfile(user, selectedRole, name = '') {
+    const { db, dbSdk } = firebase;
+    const profileRef = dbSdk.doc(db, 'users', user.uid);
+    const existing = await dbSdk.getDoc(profileRef);
+    const oldProfile = existing.exists() ? existing.data() : {};
+    const profile = {
+        uid: user.uid,
+        email: user.email || '',
+        name: user.displayName || name || oldProfile.name || '',
+        photoURL: user.photoURL || oldProfile.photoURL || '',
+        role: oldProfile.role || selectedRole,
+        updatedAt: dbSdk.serverTimestamp()
+    };
+    if (!existing.exists()) profile.createdAt = dbSdk.serverTimestamp();
+    await dbSdk.setDoc(profileRef, profile, { merge: true });
+    return { ...profile, createdAt: oldProfile.createdAt || profile.createdAt };
+}
+
+function setAuthMode(mode) {
+    authMode = mode;
+    document.querySelectorAll('.auth-tab').forEach((tab) => {
+        const active = tab.dataset.mode === mode;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+    });
+    document.getElementById('nameField').hidden = mode !== 'signup';
+    document.getElementById('authName').required = mode === 'signup';
+    document.getElementById('authPassword').autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
+    document.getElementById('authSubmit').textContent = mode === 'signup' ? 'Create account' : 'Log in';
+    document.getElementById('authTitle').textContent = mode === 'signup' ? 'Create your account' : 'Welcome to Beacon';
+    document.getElementById('authMessage').textContent = '';
+}
+
+function enterApp(user) {
+    currentUser = user;
+    document.getElementById('authGate').hidden = true;
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+}
+
+document.querySelectorAll('.auth-tab').forEach((tab) => tab.addEventListener('click', () => setAuthMode(tab.dataset.mode)));
+document.getElementById('authForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const message = document.getElementById('authMessage');
+    const email = document.getElementById('authEmail').value.trim().toLowerCase();
+    const password = document.getElementById('authPassword').value;
+    try {
+        if (!firebase) throw new Error('Firebase is still loading. Try again in a moment.');
+        const { authSdk, auth } = firebase;
+        let credential;
+        const role = document.querySelector('input[name="role"]:checked').value;
+        if (authMode === 'signup') {
+            credential = await authSdk.createUserWithEmailAndPassword(auth, email, password);
+            const name = document.getElementById('authName').value.trim();
+            await authSdk.updateProfile(credential.user, { displayName: name });
+            enterApp(await saveFirebaseProfile(credential.user, role, name));
+        } else {
+            credential = await authSdk.signInWithEmailAndPassword(auth, email, password);
+            enterApp(await saveFirebaseProfile(credential.user, role));
+        }
+        message.textContent = '';
+    } catch (error) { message.textContent = friendlyFirebaseError(error); }
+});
+
+document.getElementById('googleSignIn').addEventListener('click', async () => {
+    const message = document.getElementById('authMessage');
+    try {
+        if (!firebase) throw new Error('Firebase is still loading. Try again in a moment.');
+        message.textContent = 'Signing in with Google…';
+        const result = await firebase.authSdk.signInWithPopup(firebase.auth, firebase.provider);
+        enterApp(await saveFirebaseProfile(result.user, document.querySelector('input[name="role"]:checked').value));
+        message.textContent = '';
+    } catch (error) { message.textContent = friendlyFirebaseError(error); }
+});
+
+function friendlyFirebaseError(error) {
+    const messages = {
+        'auth/invalid-credential': 'Email or password is incorrect.',
+        'auth/email-already-in-use': 'This email already has an account. Log in instead.',
+        'auth/weak-password': 'Choose a password with at least 6 characters.',
+        'auth/operation-not-allowed': 'Enable this sign-in method in Firebase Authentication settings.',
+        'auth/unauthorized-domain': 'Add this app domain to Firebase Authentication authorized domains.',
+        'auth/popup-closed-by-user': 'Google sign-in was closed before it finished.'
+    };
+    return messages[error.code] || error.message || 'Firebase sign-in failed.';
+}
+
 const hazardData = {
     flashfloods: {
         label: 'Flash Flood reported within 300 meters',
@@ -97,17 +230,7 @@ function filterHazards() {
 }
 
 function setDefaultImages() {
-    const logo = document.querySelector('.beaconlogo img');
     const profileIcon = document.querySelector('.profile-button img');
-
-    if (logo) {
-        logo.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="34" viewBox="0 0 120 34">
-                <rect width="120" height="34" rx="8" fill="#F6F3E9"/>
-                <text x="16" y="22" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#12261E">Beacon</text>
-            </svg>
-        `);
-    }
 
     if (profileIcon) {
         profileIcon.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
@@ -207,10 +330,10 @@ function openProfile() {
             <div class="profile-panel-inner">
                 <button class="profile-close" onclick="closeProfile()">✕</button>
                 <div class="profile-header">
-                    <div class="profile-avatar">A</div>
+                    <div class="profile-avatar">${escapeHtml((currentUser?.name || currentUser?.email || 'B').slice(0, 1).toUpperCase())}</div>
                     <div>
-                        <h3>Agent Aria</h3>
-                        <p>Emergency Response</p>
+                        <h3>${escapeHtml(currentUser?.name || currentUser?.email || 'Beacon member')}</h3>
+                        <p>${currentUser?.role === 'responder' ? 'Responder' : 'Driver'}</p>
                     </div>
                 </div>
                 <div class="profile-actions">
@@ -218,6 +341,7 @@ function openProfile() {
                     <button>Response History</button>
                     <button>Settings</button>
                     <button type="button" onclick="openAdminDashboard()">Admin Dashboard</button>
+                    <button type="button" onclick="signOutBeacon()">Log out</button>
                 </div>
             </div>
         `;
@@ -236,6 +360,19 @@ function closeProfile() {
     const panel = document.getElementById('profilePanel');
     if (panel) {
         panel.classList.remove('active');
+    }
+}
+
+async function signOutBeacon() {
+    try {
+        if (firebase) await firebase.authSdk.signOut(firebase.auth);
+        currentUser = null;
+        closeProfile();
+        document.getElementById('authGate').hidden = false;
+        document.getElementById('authForm').reset();
+        setAuthMode('login');
+    } catch (error) {
+        document.getElementById('authMessage').textContent = friendlyFirebaseError(error);
     }
 }
 

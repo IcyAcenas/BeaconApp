@@ -10,6 +10,33 @@
 </head>
 <body>
 
+    <section id="authGate" class="auth-gate" aria-labelledby="authTitle">
+        <div class="auth-card">
+            <div class="auth-brand"><img src="beacon-logo.png" alt="Beacon Road Safety Intelligence Network"></div>
+            <p class="auth-eyebrow">COMMUNITY SAFETY NETWORK</p>
+            <h1 id="authTitle">Welcome to Beacon</h1>
+            <p class="auth-subtitle">Sign in to stay connected and help keep your community safe.</p>
+            <div class="auth-tabs" role="tablist" aria-label="Account access">
+                <button type="button" class="auth-tab active" data-mode="login" role="tab" aria-selected="true">Log in</button>
+                <button type="button" class="auth-tab" data-mode="signup" role="tab" aria-selected="false">Create account</button>
+            </div>
+            <form id="authForm">
+                <label class="auth-field" id="nameField" hidden>Full name<input id="authName" type="text" autocomplete="name" placeholder="Your name"></label>
+                <label class="auth-field">Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+                <label class="auth-field">Password<input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 8 characters" minlength="8" required></label>
+                <fieldset class="role-picker"><legend>I'm joining as</legend>
+                    <label><input type="radio" name="role" value="driver" checked><span>🚘 <b>Driver</b><small>Travel with local alerts</small></span></label>
+                    <label><input type="radio" name="role" value="responder"><span>🦺 <b>Responder</b><small>Support your community</small></span></label>
+                </fieldset>
+                <p id="authMessage" class="auth-message" role="alert" aria-live="polite"></p>
+                <button class="auth-submit" type="submit" id="authSubmit">Log in</button>
+            </form>
+            <div class="auth-divider"><span>or continue with</span></div>
+            <button type="button" class="google-button" id="googleSignIn"><span class="google-g">G</span> Continue with Google</button>
+            <p class="auth-privacy">Your account helps personalize safety information for your role.</p>
+        </div>
+    </section>
+
     <div id="map"></div>
 
     <header class="top-bar">
