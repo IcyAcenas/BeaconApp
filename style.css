@@ -356,6 +356,113 @@ body {
   transform: translateY(-2px);
 }
 
+.report-button {
+  position: absolute;
+  right: 16px;
+  bottom: 120px;
+  z-index: 1100;
+  border: none;
+  background: #F6F3E9;
+  color: #12261E;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 700;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.report-modal {
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 38, 30, 0.6);
+  z-index: 2000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.report-modal.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.report-panel {
+  width: min(420px, calc(100vw - 18px));
+  background: #F6F3E9;
+  color: #12261E;
+  border-radius: 22px 22px 0 0;
+  padding: 18px 18px 24px 18px;
+  box-shadow: 0 -12px 24px rgba(0, 0, 0, 0.28);
+}
+
+.report-close {
+  display: block;
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  font-size: 1.2rem;
+  color: #12261E;
+  cursor: pointer;
+}
+
+.report-panel h3 {
+  margin: 10px 0 14px;
+  font-size: 1.2rem;
+}
+
+#hazardReportForm {
+  display: grid;
+  gap: 12px;
+}
+
+#hazardReportForm label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+#hazardReportForm input,
+#hazardReportForm select,
+#hazardReportForm textarea {
+  width: 100%;
+  border: 1px solid rgba(18, 38, 30, 0.2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: #12261E;
+  font: inherit;
+}
+
+.report-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.primary-btn,
+.secondary-btn {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-btn {
+  background: #12261E;
+  color: #F6F3E9;
+}
+
+.secondary-btn {
+  background: rgba(18, 38, 30, 0.09);
+  color: #12261E;
+}
+
 .profile-panel {
   position: absolute;
   top: 0;
@@ -440,6 +547,167 @@ body {
   padding: 12px 14px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.admin-dashboard-panel {
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 38, 30, 0.58);
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.admin-dashboard-panel.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.admin-dashboard-inner {
+  width: min(760px, calc(100vw - 20px));
+  max-height: calc(100vh - 60px);
+  overflow: auto;
+  background: #F6F3E9;
+  color: #12261E;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  padding: 16px 16px 12px;
+}
+
+.admin-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(18, 38, 30, 0.15);
+}
+
+.admin-dashboard-kicker {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4A5568;
+  margin-bottom: 4px;
+}
+
+.admin-dashboard-header h3 {
+  font-size: 1.5rem;
+  color: #12261E;
+}
+
+.admin-dashboard-close {
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  color: #12261E;
+  cursor: pointer;
+}
+
+.admin-dashboard-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-dashboard-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 16px;
+}
+
+.filter-chip {
+  border: 1px solid rgba(18, 38, 30, 0.18);
+  background: #fff;
+  color: #12261E;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filter-chip.active {
+  background: #12261E;
+  color: #F6F3E9;
+}
+
+.admin-incident-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-incident-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid rgba(18, 38, 30, 0.12);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.admin-incident-item.resolved {
+  opacity: 0.72;
+}
+
+.incident-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.incident-main h4 {
+  font-size: 0.96rem;
+  margin-bottom: 2px;
+  color: #12261E;
+}
+
+.incident-main p {
+  font-size: 0.74rem;
+  color: #4A5568;
+}
+
+.incident-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.incident-badge.red { background: rgba(229, 57, 53, 0.12); color: #b71c1c; }
+.incident-badge.orange { background: rgba(251, 140, 0, 0.12); color: #b45309; }
+.incident-badge.blue { background: rgba(30, 136, 229, 0.12); color: #1565c0; }
+.incident-badge.green { background: rgba(76, 175, 80, 0.12); color: #1b5e20; }
+
+.resolve-btn {
+  border: none;
+  background: #12261E;
+  color: #F6F3E9;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.resolve-btn.muted {
+  background: rgba(18, 38, 30, 0.12);
+  color: #12261E;
+  cursor: default;
 }
 
 .hazard-map-pin {
