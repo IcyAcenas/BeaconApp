@@ -761,13 +761,13 @@ function openProfile() {
                     <div class="profile-avatar">A</div>
                     <div>
                         <h3>Agent Aria</h3>
-                        <p>Emergency Response</p>
+                        <p>Emergency Responder</p>
                     </div>
                 </div>
                 <div class="profile-actions">
-                    <button>Saved Alerts</button>
-                    <button>Response History</button>
-                    <button>Settings</button>
+                    <button type="button" onclick="openSavedAlerts()">Saved Alerts</button>
+                    <button type="button" onclick="openResponseHistory()">Response History</button>
+                    <button type="button" onclick="openSettings()">Settings</button>
                     <button type="button" onclick="openAdminDashboard()">Admin Dashboard</button>
                 </div>
             </div>
