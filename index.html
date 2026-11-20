@@ -18,19 +18,72 @@
             <img src="beacon-logo.png" alt="Beacon Logo"/>
         </div>
 
-        <div class="searchbar">
-            <span class="search-icon">🔍</span>
-            <input type="text" placeholder="Search for a location..."/>
-            <button class="clearsearch" onclick="clearSearch()">✖</button>
+        <div class="searchbar-wrapper">
+            <div class="searchbar">
+                <span class="search-icon">🔍</span>
+                <input id="mainSearchInput" type="text" placeholder="Search destination or hazard..." autocomplete="off"/>
+                <button class="clearsearch" type="button" onclick="clearSearch()">✖</button>
+            </div>
+            <ul id="topSearchSuggestions" class="top-search-suggestions"></ul>
         </div>
 
         <div class="userprofile">
-            <button class="profile-button" onclick="openProfile()">
+            <button class="profile-button" type="button" onclick="openProfile()">
                 <img src="profile-icon.png" alt="User Profile Setting"/>
             </button>
         </div>
 
     </header>
+
+    <!-- Safe Rerouting / Navigation Panel (Opens when Search Bar is pressed) -->
+    <section id="routePanel" class="route-panel" aria-label="Hazard-aware navigation">
+        <div class="route-panel-header">
+            <div class="route-panel-title-wrap">
+                <span class="route-panel-kicker">SAFE NAVIGATION</span>
+                <h3>Hazard-Aware Rerouting</h3>
+            </div>
+            <div class="route-mode-pills">
+                <button type="button" class="route-mode-pill active" data-profile="driving" onclick="setRouteProfile('driving')">Drive</button>
+                <button type="button" class="route-mode-pill" data-profile="walking" onclick="setRouteProfile('walking')">Walk</button>
+                <button type="button" class="route-mode-pill" data-profile="cycling" onclick="setRouteProfile('cycling')">Bike</button>
+            </div>
+            <button type="button" class="route-panel-close" onclick="closeRoutePanel()" aria-label="Close routing">✕</button>
+        </div>
+
+        <div class="route-inputs-stack">
+            <div class="route-input-box">
+                <span class="route-dot origin-dot" title="Start"></span>
+                <input id="routeOriginInput" type="text" placeholder="Start location (or use GPS)" autocomplete="off"/>
+                <button type="button" class="route-mini-btn" onclick="useRouteGpsOrigin()" title="Use Current Location">GPS</button>
+                <button type="button" class="route-mini-btn" onclick="enableMapPickMode('origin')" title="Pick start on map">📍</button>
+                <ul id="routeOriginSuggestions" class="route-suggestions"></ul>
+            </div>
+
+            <div class="route-input-box">
+                <span class="route-dot dest-dot" title="Destination"></span>
+                <input id="routeDestInput" type="text" placeholder="Where are you heading in CDO?" autocomplete="off"/>
+                <button type="button" class="route-mini-btn" onclick="swapRouteEndpoints()" title="Swap start and destination">⇅</button>
+                <button type="button" class="route-mini-btn" onclick="enableMapPickMode('destination')" title="Pick destination on map">📍</button>
+                <ul id="routeDestSuggestions" class="route-suggestions"></ul>
+            </div>
+        </div>
+
+        <p id="routePickHint" class="route-pick-hint"></p>
+
+        <div class="route-action-row">
+            <button id="findRouteBtn" type="button" class="route-primary-btn" onclick="calculateSafeRoute()">Find Safe Route</button>
+            <button id="clearRouteBtn" type="button" class="route-secondary-btn" onclick="clearRoute()">Clear</button>
+        </div>
+
+        <div id="routeStatusBox" class="route-status-box">
+            <div class="route-status-top">
+                <span id="routeStatusBadge" class="route-status-badge clear">SAFE ROUTE</span>
+                <span id="routeMetrics" class="route-metrics"></span>
+            </div>
+            <p id="routeStatusMessage" class="route-status-message"></p>
+            <p id="routeNextStep" class="route-next-step"></p>
+        </div>
+    </section>
 
     <div id="warning">
 
@@ -104,12 +157,17 @@
                         </div>
                     </div>
 
-                    <div id="capturedPhotoBox" class="captured-photo-box">
-                        <img id="hazardPhotoPreview" alt="Captured verification photo"/>
-                        <button type="button" class="retake-photo-btn" onclick="openLiveCamera()">Retake Photo</button>
+                    <div id="cameraFallbackBox" class="camera-fallback-box">
+                        <span id="cameraFallbackMsg">Live camera unavailable on this browser/device.</span>
+                        <button type="button" class="cam-fallback-btn" onclick="triggerFallbackPhotoPicker()">Take / Choose Photo</button>
                     </div>
 
-                    <input id="cameraOnlyFallbackInput" type="file" accept="image/*" capture="environment" style="display:none"/>
+                    <div id="capturedPhotoBox" class="captured-photo-box">
+                        <img id="hazardPhotoPreview" alt="Captured verification photo"/>
+                        <button type="button" class="retake-photo-btn" onclick="retakeHazardPhoto()">Retake Photo</button>
+                    </div>
+
+                    <input id="cameraOnlyFallbackInput" type="file" accept="image/*" capture="environment" class="visually-hidden-file-input"/>
                 </div>
 
                 <div class="report-card-group time-card-group">
@@ -269,6 +327,31 @@
         </div>
 
     </div>
+
+    <!-- Scrollable Category Reports Feed Sheet (Opens when a Hazard Card is clicked) -->
+    <section id="categoryFeedSheet" class="category-feed-sheet" aria-label="Category incident reports">
+        <div id="categoryFeedHandle" class="category-feed-handle" role="button" tabindex="0" aria-label="Close category reports"></div>
+
+        <div class="category-feed-header">
+            <h2 id="categoryFeedTitle">Flash Floods</h2>
+            <div class="category-feed-actions">
+                <button id="categoryFeedAddBtn" class="category-feed-add-btn" type="button" onclick="openReportFromFeed()" aria-label="Add report to this category">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+                <button id="categoryFeedBackBtn" class="category-feed-back-btn" type="button" onclick="closeCategoryFeed(true)" aria-label="Back to active hazards">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 14L4 9l5-5"/>
+                        <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div id="categoryFeedList" class="category-feed-list"></div>
+    </section>
 
     <script src="script.js"></script>
 

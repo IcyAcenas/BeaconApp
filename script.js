@@ -19,9 +19,11 @@ const pullUpSection = document.getElementById('PullUpSection');
 const pullUpHandle = document.getElementById('PullUpHandle');
 const pullUpSectionTitle = document.getElementById('PullUpSectionTitle');
 const expandedFeedList = document.getElementById('expandedFeedList');
+const warningBanner = document.getElementById('warning');
 const warningTitle = document.getElementById('warningtitle');
 const warningText = document.getElementById('warningtext');
-const searchInput = document.querySelector('.searchbar input');
+const searchInput = document.getElementById('mainSearchInput') || document.querySelector('.searchbar input');
+const topSearchSuggestions = document.getElementById('topSearchSuggestions');
 const reportModal = document.getElementById('reportModal');
 const reportPanelTitle = document.getElementById('reportPanelTitle');
 const hazardReportForm = document.getElementById('hazardReportForm');
@@ -38,37 +40,90 @@ const capturedPhotoBox = document.getElementById('capturedPhotoBox');
 const hazardPhotoPreview = document.getElementById('hazardPhotoPreview');
 const cameraOnlyFallbackInput = document.getElementById('cameraOnlyFallbackInput');
 
+// Category Feed Sheet DOM elements
+const categoryFeedSheet = document.getElementById('categoryFeedSheet');
+const categoryFeedHandle = document.getElementById('categoryFeedHandle');
+const categoryFeedTitle = document.getElementById('categoryFeedTitle');
+const categoryFeedList = document.getElementById('categoryFeedList');
+
+// Routing DOM elements
+const routePanel = document.getElementById('routePanel');
+const routeOriginInput = document.getElementById('routeOriginInput');
+const routeDestInput = document.getElementById('routeDestInput');
+const routeOriginSuggestions = document.getElementById('routeOriginSuggestions');
+const routeDestSuggestions = document.getElementById('routeDestSuggestions');
+const routePickHint = document.getElementById('routePickHint');
+const routeStatusBox = document.getElementById('routeStatusBox');
+const routeStatusBadge = document.getElementById('routeStatusBadge');
+const routeMetrics = document.getElementById('routeMetrics');
+const routeStatusMessage = document.getElementById('routeStatusMessage');
+const routeNextStep = document.getElementById('routeNextStep');
+
+const BACK_ARROW_SVG = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 12H5"/>
+        <path d="M12 19l-7-7 7-7"/>
+    </svg>
+`;
+
+const DEFAULT_PROFILE_ICON_URI = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4" fill="#12261E"/>
+        <path d="M4 19c1.5-3 5-4.5 8-4.5s6.5 1.5 8 4.5" fill="none" stroke="#12261E" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+`);
+
+const userProfile = {
+    name: 'Agent Aria',
+    role: 'responder',
+    email: 'aria@beaconcdo.ph',
+    area: 'Cagayan de Oro City',
+    avatarUrl: '',
+    signedIn: true
+};
+
+let isEditingSettings = false;
+let activeFeedHazardKey = null;
+
 const hazardData = {
     flashfloods: {
         displayName: 'Flash Floods',
+        incidentName: 'Flash Flood',
         label: 'Flash Flood reported within 300 meters',
         title: 'WARNING!',
         position: [8.4867, 124.6491],
         color: '#1E88E5',
+        badgeClass: 'blue',
         status: 'active'
     },
     accidents: {
         displayName: 'Accidents',
+        incidentName: 'Road Accident',
         label: 'Road accident reported nearby',
         title: 'WARNING!',
         position: [8.4824, 124.6458],
         color: '#E53935',
+        badgeClass: 'red',
         status: 'active'
     },
     fires: {
         displayName: 'Fires',
+        incidentName: 'Fire Emergency',
         label: 'Fire emergency reported nearby',
         title: 'WARNING!',
         position: [8.4895, 124.6549],
         color: '#FB8C00',
+        badgeClass: 'orange',
         status: 'active'
     },
     landslides: {
         displayName: 'Landslides',
+        incidentName: 'Landslide',
         label: 'Landslide cleared and monitored',
         title: 'STATUS',
         position: [8.4802, 124.6417],
         color: '#4CAF50',
+        badgeClass: 'green',
         status: 'resolved'
     }
 };
@@ -77,46 +132,76 @@ const defaultHazards = [
     {
         id: 'default-flood-1',
         hazardKey: 'flashfloods',
-        label: 'Flash Flood reported within 300 meters',
+        reporterName: 'Euan Mercado',
+        reporterAvatar: 'images/profilephoto1.jpg',
+        label: 'Flash Flood reported near Don Apolinar Velez St.',
+        description: 'Ayaw mo agi diri. Taas kaayo ang tubig sa dalan, dili na maagian og gagmay nga sakyanan.',
         title: 'WARNING!',
+        location: 'Near Don Apolinar Velez St.',
+        timeAgo: '1 hour ago',
         position: [8.4867, 124.6491],
         color: '#1E88E5',
+        photoUrl: 'images/flashflood1.jpeg',
         status: 'active'
     },
     {
         id: 'default-flood-2',
         hazardKey: 'flashfloods',
-        label: 'Riverbank overflow reported near Carmen',
+        reporterName: 'Leni Perez',
+        reporterAvatar: 'images/profilephoto4.jpg',
+        label: 'Flash flood overflow near Claro M. Recto Ave',
+        description: 'Hastang taasa sa tubig. Likay mo diri',
         title: 'WARNING!',
-        position: [8.4815, 124.6432],
+        location: 'Near Claro M. Recto Ave',
+        timeAgo: '2 hours ago',
+        position: [8.4847, 124.6562],
         color: '#1E88E5',
+        photoUrl: 'images/flashflood2.jpeg',
         status: 'active'
     },
     {
         id: 'default-accident-1',
         hazardKey: 'accidents',
-        label: 'Road accident reported nearby',
+        reporterName: 'Icy Acenas',
+        reporterAvatar: 'images/profilephoto2.jpg',
+        label: 'Road accident reported near Masterson Avenue',
+        description: 'Two-vehicle collision blocking the outer southbound lane. Traffic moving slowly.',
         title: 'WARNING!',
+        location: 'Near Masterson Avenue',
+        timeAgo: '12 minutes ago',
         position: [8.4824, 124.6458],
         color: '#E53935',
+        photoUrl: 'images/accident1.jpeg',
         status: 'active'
     },
     {
         id: 'default-fire-1',
         hazardKey: 'fires',
-        label: 'Fire emergency reported nearby',
+        reporterName: 'Mitchie Bagaporo',
+        reporterAvatar: 'images/profilephoto3.jpg',
+        label: 'Fire emergency reported near Barangay 8',
+        description: 'Fire trucks are on scene. Keep roads clear for emergency responders.',
         title: 'WARNING!',
+        location: 'Near Barangay 8',
+        timeAgo: '30 minutes ago',
         position: [8.4895, 124.6549],
         color: '#FB8C00',
+        photoUrl: 'images/fire1.jpeg',
         status: 'active'
     },
     {
         id: 'default-landslide-1',
         hazardKey: 'landslides',
-        label: 'Landslide cleared and monitored',
+        reporterName: 'Francis King Uyguangco',
+        reporterAvatar: 'images/profilephoto4.jpg',
+        label: 'Landslide cleared and monitored in Camaman-an',
+        description: 'Debris has been cleared by city engineering. Road is now passable.',
         title: 'STATUS',
+        location: 'Camaman-an, CDO',
+        timeAgo: '2 hours ago',
         position: [8.4802, 124.6417],
         color: '#4CAF50',
+        photoUrl: 'images/landslide1.jpeg',
         status: 'resolved'
     }
 ];
@@ -128,9 +213,9 @@ const categoryCardElements = {
         descId: 'flooddescriptioncard',
         reporterId: 'floodreportername',
         timeId: 'floodreporttime',
-        defaultImage: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?auto=format&fit=crop&w=900&q=80',
+        defaultImage: 'images/flood1.jpg',
         defaultReporter: 'Euan Mercado',
-        defaultTime: '5 minutes ago'
+        defaultTime: '1 hour ago'
     },
     accidents: {
         imageId: 'accidentlatest',
@@ -138,7 +223,7 @@ const categoryCardElements = {
         descId: 'accidentdescriptioncard',
         reporterId: 'accidentreportername',
         timeId: 'accidentreporttime',
-        defaultImage: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=900&q=80',
+        defaultImage: 'images/accident1.jpg',
         defaultReporter: 'Icy Acenas',
         defaultTime: '12 minutes ago'
     },
@@ -148,7 +233,7 @@ const categoryCardElements = {
         descId: 'firedescriptioncard',
         reporterId: 'firereportername',
         timeId: 'firereporttime',
-        defaultImage: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=900&q=80',
+        defaultImage: 'images/fire1.jpg',
         defaultReporter: 'Mitchie Bagaporo',
         defaultTime: '30 minutes ago'
     },
@@ -158,17 +243,20 @@ const categoryCardElements = {
         descId: 'landslidedescriptioncard',
         reporterId: 'landslidereportername',
         timeId: 'landslidereporttime',
-        defaultImage: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80',
+        defaultImage: 'images/landslide1.jpg',
         defaultReporter: 'Francis King Uyguangco',
         defaultTime: '2 hours ago'
     }
 };
 
 const cdoLocalPlaces = [
+    { name: 'Don Apolinar Velez St., Cagayan de Oro City', sub: 'City Proper, Cagayan de Oro', position: [8.4867, 124.6491] },
+    { name: 'Claro M. Recto Avenue, Cagayan de Oro City', sub: 'Lapasan / Poblacion, CDO', position: [8.4847, 124.6562] },
     { name: 'Corrales Avenue, Cagayan de Oro City', sub: 'City Proper, Cagayan de Oro', position: [8.4812, 124.6488] },
     { name: 'Barangay 8, Cagayan de Oro City', sub: 'Poblacion, Cagayan de Oro', position: [8.4853, 124.6497] },
     { name: 'Masterson Avenue, Cagayan de Oro City', sub: 'Upper Carmen / Uptown CDO', position: [8.4855, 124.6524] },
     { name: 'Carmen, Cagayan de Oro City', sub: 'West Poblacion, Cagayan de Oro', position: [8.4820, 124.6410] },
+    { name: 'Consolacion, Cagayan de Oro City', sub: 'North Poblacion, Cagayan de Oro', position: [8.4895, 124.6475] },
     { name: 'Cugman, Cagayan de Oro City', sub: 'East Highway, Cagayan de Oro', position: [8.4728, 124.6825] },
     { name: 'Lapasan, Cagayan de Oro City', sub: 'CM Recto Avenue, Cagayan de Oro', position: [8.4847, 124.6612] },
     { name: 'Divisoria, Cagayan de Oro City', sub: 'City Proper, Cagayan de Oro', position: [8.4772, 124.6459] },
@@ -193,6 +281,9 @@ let startY = 0;
 let currentY = 0;
 let isDragging = false;
 let suppressNextHandleClick = false;
+let feedDragStartY = 0;
+let feedDragCurrentY = 0;
+let isFeedDragging = false;
 let selectedHazardFilter = null;
 let capturedPhotoDataUrl = '';
 let activeCameraStream = null;
@@ -200,23 +291,101 @@ let selectedPinPosition = null;
 let draftPinMarker = null;
 let suggestionDebounceTimer = null;
 
+// Routing state
+const routeLayerGroup = L.layerGroup().addTo(map);
+const routeState = {
+    profile: 'driving',
+    originCoords: null,
+    destCoords: null,
+    pickMode: null,
+    hasActiveRoute: false
+};
+let routeSuggestTimer = null;
+let topSearchTimer = null;
+
 const hazardMarkers = {};
 const hazardReports = [];
+const resolvedHistory = [];
 let hazardReportCounter = 0;
 window.hazardReports = hazardReports;
 window.hazardData = hazardData;
 
+function getHazardAvoidRadiusMeters(profile = routeState.profile) {
+    if (profile === 'walking') return 140;
+    if (profile === 'cycling') return 165;
+    return 220;
+}
+
+function getRoleLabel(role) {
+    return role === 'responder' ? 'Emergency Responder' : 'Regular User';
+}
+
+function getUserInitial() {
+    return (userProfile.name || 'U').trim().charAt(0).toUpperCase() || 'U';
+}
+
+function getUserAvatarDataUri() {
+    if (userProfile.avatarUrl) return userProfile.avatarUrl;
+    const initial = getUserInitial();
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+            <rect width="96" height="96" rx="48" fill="#12261E"/>
+            <text x="48" y="60" text-anchor="middle" font-size="40" font-family="Arial, sans-serif" font-weight="700" fill="#F6F3E9">${initial}</text>
+        </svg>
+    `);
+}
+
+function renderAvatarMarkup(extraClass = '') {
+    if (userProfile.avatarUrl) {
+        return `<img src="${userProfile.avatarUrl}" alt="${userProfile.name}" class="avatar-photo ${extraClass}"/>`;
+    }
+    return `<span>${getUserInitial()}</span>`;
+}
+
+function updateTopBarProfileIcon() {
+    const profileIcon = document.querySelector('.profile-button img');
+    if (!profileIcon) return;
+
+    if (userProfile.signedIn && userProfile.avatarUrl) {
+        profileIcon.src = userProfile.avatarUrl;
+        profileIcon.style.objectFit = 'cover';
+    } else {
+        profileIcon.src = DEFAULT_PROFILE_ICON_URI;
+        profileIcon.style.objectFit = '';
+    }
+}
+
 function getAllHazards() {
     return [
-        ...defaultHazards,
-        ...hazardReports.map((report) => ({
+        ...hazardReports.slice().reverse().map((report) => ({
             id: `report-${report.id}`,
             hazardKey: report.hazardKey,
+            reporterName: report.reporterName || userProfile.name || 'You',
+            reporterAvatar: report.reporterAvatar || getUserAvatarDataUri(),
             label: report.label,
+            description: report.description || '',
             title: report.title,
+            location: report.location,
+            timeAgo: `Just now · ${report.time}`,
             position: report.position,
             color: report.color,
+            photoUrl: report.photoUrl,
             status: report.status
+        })),
+        ...defaultHazards.map((item) => ({
+            id: item.id,
+            hazardKey: item.hazardKey,
+            reporterName: item.reporterName || 'Community Member',
+            reporterAvatar: item.reporterAvatar || getUserAvatarDataUri(),
+            label: item.label,
+            description: item.description || '',
+            title: item.title,
+            location: item.location,
+            timeAgo: item.timeAgo,
+            position: item.position,
+            color: item.color,
+            photoUrl: item.photoUrl || '',
+            status: item.status
         }))
     ];
 }
@@ -225,7 +394,7 @@ function renderExpandedFeed() {
     if (!expandedFeedList) return;
     expandedFeedList.innerHTML = '';
 
-    const items = [...getAllHazards()].reverse();
+    const items = getAllHazards();
     items.forEach((item) => {
         const typeTitle = hazardData[item.hazardKey]?.displayName || item.hazardKey;
         const row = document.createElement('div');
@@ -244,6 +413,7 @@ function renderExpandedFeed() {
             warningText.textContent = item.label;
             warningTitle.textContent = item.title;
             pullUpSection.classList.remove('expanded');
+            openCategoryFeed(item.hazardKey);
             map.flyTo(item.position, 16, { duration: 1.0 });
         });
         expandedFeedList.appendChild(row);
@@ -259,6 +429,9 @@ function updateCategoryCards() {
         );
         const userActiveReports = hazardReports.filter(
             (report) => report.hazardKey === hazardKey && report.status !== 'resolved'
+        );
+        const defaultCategoryItem = defaultHazards.find(
+            (item) => item.hazardKey === hazardKey && item.photoUrl
         );
 
         const statusDot = document.getElementById(config.statusId);
@@ -278,22 +451,159 @@ function updateCategoryCards() {
         if (reporterEl && timeEl) {
             if (userActiveReports.length > 0) {
                 const latestReport = userActiveReports[userActiveReports.length - 1];
-                reporterEl.textContent = 'You';
+                reporterEl.textContent = latestReport.reporterName || userProfile.name || 'You';
                 timeEl.textContent = 'Just now';
                 if (imageEl && latestReport.photoUrl) {
                     imageEl.src = latestReport.photoUrl;
                 }
             } else {
-                reporterEl.textContent = config.defaultReporter;
-                timeEl.textContent = config.defaultTime;
+                reporterEl.textContent = defaultCategoryItem?.reporterName || config.defaultReporter;
+                timeEl.textContent = defaultCategoryItem?.timeAgo || config.defaultTime;
                 if (imageEl) {
-                    imageEl.src = config.defaultImage;
+                    imageEl.src = defaultCategoryItem?.photoUrl || config.defaultImage;
                 }
             }
         }
     });
 
     renderExpandedFeed();
+
+    if (activeFeedHazardKey && categoryFeedSheet?.classList.contains('active')) {
+        renderCategoryFeed(activeFeedHazardKey);
+    }
+}
+
+// ================= SCROLLABLE CATEGORY REPORTS FEED =================
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function openCategoryFeed(hazardKey) {
+    if (!categoryFeedSheet || !hazardData[hazardKey]) return;
+
+    activeFeedHazardKey = hazardKey;
+    pullUpSection.classList.remove('expanded');
+    pullUpSection.style.display = 'none';
+    closeRoutePanel();
+
+    renderCategoryFeed(hazardKey);
+    categoryFeedSheet.classList.add('active');
+}
+
+function closeCategoryFeed(resetSelection = true) {
+    if (!categoryFeedSheet) return;
+    categoryFeedSheet.classList.remove('active');
+    activeFeedHazardKey = null;
+
+    if (!reportModal.classList.contains('active')) {
+        pullUpSection.style.display = '';
+    }
+
+    if (resetSelection) {
+        selectedHazardFilter = null;
+        document.querySelectorAll('.hazardcard').forEach((card) => card.classList.remove('selected'));
+        renderHazardMarkers();
+    }
+}
+
+function openReportFromFeed() {
+    const targetCategory = activeFeedHazardKey || selectedHazardFilter || '';
+    if (categoryFeedSheet) {
+        categoryFeedSheet.classList.remove('active');
+    }
+    openReportForm(targetCategory);
+}
+
+function renderCategoryFeed(hazardKey) {
+    if (!categoryFeedTitle || !categoryFeedList) return;
+
+    const categoryInfo = hazardData[hazardKey];
+    categoryFeedTitle.textContent = categoryInfo ? categoryInfo.displayName : 'Reports';
+
+    const reports = getAllHazards().filter((item) => item.hazardKey === hazardKey);
+    categoryFeedList.innerHTML = '';
+
+    if (reports.length === 0) {
+        categoryFeedList.innerHTML = `
+            <div class="category-feed-empty">
+                No reports in ${escapeHtml(categoryInfo?.displayName || 'this category')} yet. Tap <strong>+</strong> to add one.
+            </div>
+        `;
+        return;
+    }
+
+    reports.forEach((report) => {
+        const isResolved = report.status === 'resolved';
+        const statusClass = isResolved ? 'resolved' : 'active';
+        const statusLabel = isResolved ? 'Resolved' : 'Active';
+
+        const fullDesc = (report.description || '').trim();
+        const maxPreviewLen = 44;
+        const needsReadMore = fullDesc.length > maxPreviewLen;
+        const shortDesc = needsReadMore ? `${fullDesc.slice(0, maxPreviewLen).trim()}...` : fullDesc;
+
+        const postEl = document.createElement('article');
+        postEl.className = 'feed-post-item';
+
+        const quoteHtml = fullDesc
+            ? `<p class="feed-post-quote">
+                “<span class="feed-quote-text" data-full="${escapeHtml(fullDesc)}" data-short="${escapeHtml(shortDesc)}" data-expanded="false">${escapeHtml(shortDesc)}</span>${needsReadMore ? ` <button type="button" class="feed-read-more-btn">Read More</button>` : ''}”
+               </p>`
+            : '';
+
+        const photoHtml = report.photoUrl
+            ? `<div class="feed-post-photo-wrap">
+                <img src="${report.photoUrl}" alt="${escapeHtml(categoryInfo?.displayName || 'Hazard')} report photo" class="feed-post-photo"/>
+               </div>`
+            : '';
+
+        postEl.innerHTML = `
+            <div class="feed-post-top">
+                <img src="${report.reporterAvatar}" alt="${escapeHtml(report.reporterName)}" class="feed-post-avatar"/>
+                <div class="feed-post-bubble">
+                    <h4 class="feed-post-author">${escapeHtml(report.reporterName)}</h4>
+                    <span class="feed-post-time">${escapeHtml(report.timeAgo)}</span>
+                    <span class="feed-post-location">${escapeHtml(report.location || 'Cagayan de Oro City')}</span>
+                    <div class="feed-post-status">
+                        <span class="feed-status-dot ${statusClass}"></span>
+                        <span>${statusLabel}</span>
+                    </div>
+                    ${quoteHtml}
+                </div>
+            </div>
+            ${photoHtml}
+        `;
+
+        // Toggle "Read More" / "Show Less" without triggering map flyTo
+        const readMoreBtn = postEl.querySelector('.feed-read-more-btn');
+        if (readMoreBtn) {
+            readMoreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const textSpan = postEl.querySelector('.feed-quote-text');
+                const isExpanded = textSpan.dataset.expanded === 'true';
+                if (isExpanded) {
+                    textSpan.textContent = textSpan.dataset.short;
+                    textSpan.dataset.expanded = 'false';
+                    readMoreBtn.textContent = 'Read More';
+                } else {
+                    textSpan.textContent = textSpan.dataset.full;
+                    textSpan.dataset.expanded = 'true';
+                    readMoreBtn.textContent = 'Show Less';
+                }
+            });
+        }
+
+        // Clicking the card/photo focuses that incident on the map
+        postEl.addEventListener('click', () => {
+            warningText.textContent = report.label;
+            warningTitle.textContent = report.title;
+            map.flyTo(report.position, 16, { duration: 0.9 });
+        });
+
+        categoryFeedList.appendChild(postEl);
+    });
 }
 
 function toggleSheet() {
@@ -308,6 +618,7 @@ function clearSearch() {
     searchInput.value = '';
     searchInput.focus();
     selectedHazardFilter = null;
+    hideTopSearchSuggestions();
     document.querySelectorAll('.hazardcard').forEach((card) => card.classList.remove('selected'));
     filterHazards();
     renderHazardMarkers();
@@ -322,11 +633,56 @@ function filterHazards() {
         const visible = !query || text.includes(query);
         card.style.display = visible ? 'flex' : 'none';
     });
+
+    clearTimeout(topSearchTimer);
+    if (!query || query.length < 2) {
+        hideTopSearchSuggestions();
+        return;
+    }
+
+    topSearchTimer = setTimeout(async () => {
+        const matches = await queryCdoSuggestions(query);
+        renderTopSearchSuggestions(matches);
+    }, 240);
+}
+
+function renderTopSearchSuggestions(matches) {
+    if (!topSearchSuggestions) return;
+    topSearchSuggestions.innerHTML = '';
+
+    if (!matches.length) {
+        hideTopSearchSuggestions();
+        return;
+    }
+
+    matches.forEach((item) => {
+        const li = document.createElement('li');
+        li.className = 'top-search-suggestion-item';
+        li.innerHTML = `
+            <div>
+                <strong>${item.title}</strong>
+                <span>${item.subtitle}</span>
+            </div>
+            <span class="top-search-route-pill">Safe Route →</span>
+        `;
+        li.addEventListener('click', () => {
+            hideTopSearchSuggestions();
+            routeToDestination(item.subtitle || item.title, item.position);
+        });
+        topSearchSuggestions.appendChild(li);
+    });
+
+    topSearchSuggestions.classList.add('active');
+}
+
+function hideTopSearchSuggestions() {
+    if (!topSearchSuggestions) return;
+    topSearchSuggestions.classList.remove('active');
+    topSearchSuggestions.innerHTML = '';
 }
 
 function setDefaultImages() {
     const logo = document.querySelector('.beaconlogo img');
-    const profileIcon = document.querySelector('.profile-button img');
 
     if (logo) {
         logo.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
@@ -337,29 +693,24 @@ function setDefaultImages() {
         `);
     }
 
-    if (profileIcon) {
-        profileIcon.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                <circle cx="12" cy="8" r="4" fill="#12261E"/>
-                <path d="M4 19c1.5-3 5-4.5 8-4.5s6.5 1.5 8 4.5" fill="none" stroke="#12261E" stroke-width="2.4" stroke-linecap="round"/>
-            </svg>
-        `);
-    }
+    updateTopBarProfileIcon();
+
+    const getDefaultHazard = (key) => defaultHazards.find((item) => item.hazardKey === key) || {};
 
     const imageMap = [
-        ['#floodlatest', categoryCardElements.flashfloods.defaultImage],
-        ['#accidentlatest', categoryCardElements.accidents.defaultImage],
-        ['#firelatest', categoryCardElements.fires.defaultImage],
-        ['#landslidelatest', categoryCardElements.landslides.defaultImage],
-        ['#flooduserphoto', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80'],
-        ['#accidentuserphoto', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80'],
-        ['#fireuserphoto', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=200&q=80'],
-        ['#landslideuserphoto', 'https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=200&q=80']
+        ['#floodlatest', getDefaultHazard('flashfloods').photoUrl || categoryCardElements.flashfloods.defaultImage],
+        ['#accidentlatest', getDefaultHazard('accidents').photoUrl || categoryCardElements.accidents.defaultImage],
+        ['#firelatest', getDefaultHazard('fires').photoUrl || categoryCardElements.fires.defaultImage],
+        ['#landslidelatest', getDefaultHazard('landslides').photoUrl || categoryCardElements.landslides.defaultImage],
+        ['#flooduserphoto', getDefaultHazard('flashfloods').reporterAvatar],
+        ['#accidentuserphoto', getDefaultHazard('accidents').reporterAvatar],
+        ['#fireuserphoto', getDefaultHazard('fires').reporterAvatar],
+        ['#landslideuserphoto', getDefaultHazard('landslides').reporterAvatar]
     ];
 
     imageMap.forEach(([selector, url]) => {
         const image = document.querySelector(selector);
-        if (image) image.src = url;
+        if (image && url) image.src = url;
     });
 }
 
@@ -395,6 +746,15 @@ function createDraftPinIcon(color = '#B88456') {
     });
 }
 
+function createRouteEndpointIcon(badgeText, bgColor) {
+    return L.divIcon({
+        className: 'route-endpoint-pin',
+        html: `<div class="route-endpoint-badge" style="background:${bgColor};">${badgeText}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+    });
+}
+
 function renderHazardMarkers() {
     Object.values(hazardMarkers).forEach((marker) => marker.remove());
     Object.keys(hazardMarkers).forEach((key) => delete hazardMarkers[key]);
@@ -412,7 +772,7 @@ function renderHazardMarkers() {
 
         marker.bindPopup(`<strong>${details.hazardKey.toUpperCase()}</strong><br>${details.label}`);
         marker.on('click', () => {
-            if (reportModal.classList.contains('active')) return;
+            if (reportModal.classList.contains('active') || routeState.pickMode) return;
             warningText.textContent = details.label;
             warningTitle.textContent = details.title;
             selectHazard(details.hazardKey, true);
@@ -422,15 +782,7 @@ function renderHazardMarkers() {
 }
 
 function selectHazard(hazardKey, forceSelect = false) {
-    const isSameSelection = !forceSelect && selectedHazardFilter === hazardKey;
     const cards = document.querySelectorAll('.hazardcard');
-
-    if (isSameSelection) {
-        selectedHazardFilter = null;
-        cards.forEach((card) => card.classList.remove('selected'));
-        renderHazardMarkers();
-        return;
-    }
 
     selectedHazardFilter = hazardKey;
 
@@ -441,7 +793,7 @@ function selectHazard(hazardKey, forceSelect = false) {
     const activeMatching = getAllHazards().filter(
         (item) => item.hazardKey === hazardKey && item.status !== 'resolved'
     );
-    const latestHazard = activeMatching[activeMatching.length - 1] || hazardData[hazardKey];
+    const latestHazard = activeMatching[0] || hazardData[hazardKey];
 
     if (latestHazard) {
         warningText.textContent = latestHazard.label;
@@ -449,6 +801,7 @@ function selectHazard(hazardKey, forceSelect = false) {
     }
 
     renderHazardMarkers();
+    openCategoryFeed(hazardKey);
 
     if (activeMatching.length === 1) {
         map.flyTo(activeMatching[0].position, 15, { duration: 1.2 });
@@ -460,6 +813,513 @@ function selectHazard(hazardKey, forceSelect = false) {
     }
 }
 
+// ================= HAZARD-AWARE REROUTING =================
+function openRoutePanel() {
+    if (!routePanel) return;
+    pullUpSection.classList.remove('expanded');
+    if (categoryFeedSheet?.classList.contains('active')) {
+        closeCategoryFeed(false);
+    }
+    routePanel.classList.add('active');
+    if (warningBanner) warningBanner.style.display = 'none';
+
+    if (!routeState.originCoords && !routeOriginInput.value.trim()) {
+        useRouteGpsOrigin(true);
+    }
+}
+
+function closeRoutePanel() {
+    if (!routePanel) return;
+    routePanel.classList.remove('active');
+    if (warningBanner) warningBanner.style.display = '';
+    setRoutePickMode(null);
+    hideRouteSuggestions();
+    hideTopSearchSuggestions();
+}
+
+function setRouteProfile(profile) {
+    routeState.profile = profile;
+    document.querySelectorAll('.route-mode-pill').forEach((pill) => {
+        pill.classList.toggle('active', pill.dataset.profile === profile);
+    });
+    if (routeState.hasActiveRoute || (routeOriginInput.value.trim() && routeDestInput.value.trim())) {
+        calculateSafeRoute();
+    }
+}
+
+function setRoutePickMode(mode) {
+    routeState.pickMode = mode;
+    if (!routePickHint) return;
+    if (mode === 'origin') {
+        routePickHint.textContent = 'Tap anywhere on the map to set your Start location.';
+        routePickHint.classList.add('active');
+    } else if (mode === 'destination') {
+        routePickHint.textContent = 'Tap anywhere on the map to set your Destination.';
+        routePickHint.classList.add('active');
+    } else {
+        routePickHint.textContent = '';
+        routePickHint.classList.remove('active');
+    }
+}
+
+function enableMapPickMode(mode) {
+    const nextMode = routeState.pickMode === mode ? null : mode;
+    setRoutePickMode(nextMode);
+}
+
+function useRouteGpsOrigin(silentFallback = false) {
+    const fallbackCoords = [8.4772, 124.6459];
+
+    if (!navigator.geolocation) {
+        routeState.originCoords = fallbackCoords;
+        routeOriginInput.value = 'Divisoria, Cagayan de Oro City';
+        return;
+    }
+
+    routeOriginInput.value = 'Locating GPS...';
+    navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+            const coords = [pos.coords.latitude, pos.coords.longitude];
+            if (!isInsideCagayanDeOroBounds(coords)) {
+                routeState.originCoords = fallbackCoords;
+                routeOriginInput.value = 'Divisoria, Cagayan de Oro City';
+                if (!silentFallback) {
+                    window.alert('GPS is outside Cagayan de Oro City. Using Divisoria, CDO as your start point.');
+                }
+                return;
+            }
+            routeState.originCoords = coords;
+            const address = await reverseGeocodeCdo(coords[0], coords[1]);
+            routeOriginInput.value = address || `${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}`;
+            if (routeDestInput.value.trim()) {
+                calculateSafeRoute();
+            }
+        },
+        () => {
+            routeState.originCoords = fallbackCoords;
+            routeOriginInput.value = 'Divisoria, Cagayan de Oro City';
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+    );
+}
+
+function swapRouteEndpoints() {
+    const tempText = routeOriginInput.value;
+    const tempCoords = routeState.originCoords;
+
+    routeOriginInput.value = routeDestInput.value;
+    routeState.originCoords = routeState.destCoords;
+
+    routeDestInput.value = tempText;
+    routeState.destCoords = tempCoords;
+
+    if (routeOriginInput.value.trim() && routeDestInput.value.trim()) {
+        calculateSafeRoute();
+    }
+}
+
+function routeToDestination(label, coords) {
+    openRoutePanel();
+    routeDestInput.value = label;
+    routeState.destCoords = [...coords];
+
+    if (!routeState.originCoords) {
+        routeState.originCoords = [8.4772, 124.6459];
+        routeOriginInput.value = 'Divisoria, Cagayan de Oro City';
+    }
+
+    calculateSafeRoute();
+}
+
+function handleRouteAutocomplete(which) {
+    const inputEl = which === 'origin' ? routeOriginInput : routeDestInput;
+    const listEl = which === 'origin' ? routeOriginSuggestions : routeDestSuggestions;
+    const otherListEl = which === 'origin' ? routeDestSuggestions : routeOriginSuggestions;
+
+    if (which === 'origin') routeState.originCoords = null;
+    if (which === 'destination') routeState.destCoords = null;
+
+    if (otherListEl) {
+        otherListEl.classList.remove('active');
+        otherListEl.innerHTML = '';
+    }
+
+    const query = inputEl.value.trim();
+    clearTimeout(routeSuggestTimer);
+
+    if (!query) {
+        listEl.classList.remove('active');
+        listEl.innerHTML = '';
+        return;
+    }
+
+    routeSuggestTimer = setTimeout(async () => {
+        const results = await queryCdoSuggestions(query);
+        listEl.innerHTML = '';
+        if (!results.length) {
+            listEl.classList.remove('active');
+            return;
+        }
+        results.forEach((item) => {
+            const li = document.createElement('li');
+            li.className = 'route-suggestion-item';
+            li.innerHTML = `<strong>${item.title}</strong><span>${item.subtitle}</span>`;
+            li.addEventListener('click', () => {
+                inputEl.value = item.subtitle || item.title;
+                if (which === 'origin') {
+                    routeState.originCoords = [...item.position];
+                } else {
+                    routeState.destCoords = [...item.position];
+                }
+                listEl.classList.remove('active');
+                listEl.innerHTML = '';
+                if (routeOriginInput.value.trim() && routeDestInput.value.trim()) {
+                    calculateSafeRoute();
+                }
+            });
+            listEl.appendChild(li);
+        });
+        listEl.classList.add('active');
+    }, 220);
+}
+
+function hideRouteSuggestions() {
+    [routeOriginSuggestions, routeDestSuggestions].forEach((el) => {
+        if (el) {
+            el.classList.remove('active');
+            el.innerHTML = '';
+        }
+    });
+}
+
+function haversineDistanceMeters(latLngA, latLngB) {
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const R = 6371000;
+    const dLat = toRad(latLngB[0] - latLngA[0]);
+    const dLon = toRad(latLngB[1] - latLngA[1]);
+    const lat1 = toRad(latLngA[0]);
+    const lat2 = toRad(latLngB[0]);
+
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function pointToSegmentDistanceMeters(point, segStart, segEnd) {
+    const [py, px] = point;
+    const [ay, ax] = segStart;
+    const [by, bx] = segEnd;
+
+    const dx = bx - ax;
+    const dy = by - ay;
+    if (dx === 0 && dy === 0) {
+        return haversineDistanceMeters(point, segStart);
+    }
+
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+    const projected = [ay + t * dy, ax + t * dx];
+    return haversineDistanceMeters(point, projected);
+}
+
+function getHazardsNearRoute(routeLatLngs, activeHazards, radiusMeters = getHazardAvoidRadiusMeters()) {
+    if (!routeLatLngs || routeLatLngs.length < 2) return [];
+
+    return activeHazards.filter((hazard) => {
+        for (let i = 0; i < routeLatLngs.length - 1; i += 1) {
+            const dist = pointToSegmentDistanceMeters(hazard.position, routeLatLngs[i], routeLatLngs[i + 1]);
+            if (dist <= radiusMeters) {
+                return true;
+            }
+        }
+        return false;
+    });
+}
+
+async function fetchMapboxRoutes(waypoints, profile, excludedHazards = []) {
+    const coordStr = waypoints.map(([lat, lng]) => `${lng},${lat}`).join(';');
+    const params = new URLSearchParams({
+        alternatives: waypoints.length === 2 ? 'true' : 'false',
+        geometries: 'geojson',
+        overview: 'full',
+        steps: 'true',
+        access_token: MAPBOX_TOKEN
+    });
+
+    if (excludedHazards.length > 0 && profile.startsWith('driving')) {
+        const excludePoints = excludedHazards
+            .slice(0, 50)
+            .map((h) => `point(${h.position[1].toFixed(6)} ${h.position[0].toFixed(6)})`)
+            .join(',');
+        params.set('exclude', excludePoints);
+    }
+
+    const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordStr}?${params.toString()}`;
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data.routes) ? data.routes : [];
+}
+
+function buildDetourWaypoints(originCoords, destCoords, blockingHazards) {
+    if (!blockingHazards.length) return [];
+
+    const centerLat = blockingHazards.reduce((sum, h) => sum + h.position[0], 0) / blockingHazards.length;
+    const centerLng = blockingHazards.reduce((sum, h) => sum + h.position[1], 0) / blockingHazards.length;
+
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((centerLat * Math.PI) / 180);
+
+    const vx = (destCoords[1] - originCoords[1]) * metersPerDegLng;
+    const vy = (destCoords[0] - originCoords[0]) * metersPerDegLat;
+    const len = Math.hypot(vx, vy) || 1;
+
+    const normals = [
+        [-vy / len, vx / len],
+        [vy / len, -vx / len]
+    ];
+
+    const offsetsMeters = routeState.profile === 'driving' ? [300, 500] : [220, 360, 520];
+    const waypoints = [];
+
+    normals.forEach(([nx, ny]) => {
+        offsetsMeters.forEach((dist) => {
+            const wpLat = centerLat + (ny * dist) / metersPerDegLat;
+            const wpLng = centerLng + (nx * dist) / metersPerDegLng;
+            if (isInsideCagayanDeOroBounds([wpLat, wpLng])) {
+                waypoints.push([wpLat, wpLng]);
+            }
+        });
+    });
+
+    return waypoints;
+}
+
+function formatRouteDuration(seconds) {
+    const mins = Math.max(1, Math.round(seconds / 60));
+    if (mins < 60) return `${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    return remMins > 0 ? `${hrs} hr ${remMins} min` : `${hrs} hr`;
+}
+
+function formatRouteDistance(meters) {
+    if (meters < 1000) return `${Math.round(meters)} m`;
+    return `${(meters / 1000).toFixed(1)} km`;
+}
+
+function stripHtml(htmlText) {
+    const div = document.createElement('div');
+    div.innerHTML = htmlText || '';
+    return div.textContent || div.innerText || '';
+}
+
+async function calculateSafeRoute(isLiveUpdate = false) {
+    hideRouteSuggestions();
+    hideTopSearchSuggestions();
+    setRoutePickMode(null);
+
+    const originText = routeOriginInput.value.trim();
+    const destText = routeDestInput.value.trim();
+
+    if (!originText || !destText) {
+        if (!isLiveUpdate) {
+            window.alert('Please enter both a start location and destination.');
+        }
+        return;
+    }
+
+    const originCoords = routeState.originCoords || await getReportedPosition(originText);
+    const destCoords = routeState.destCoords || await getReportedPosition(destText);
+
+    if (!originCoords || !destCoords) {
+        if (!isLiveUpdate) {
+            window.alert('Could not find one of those locations in Cagayan de Oro City. Please pick a suggestion or tap the map.');
+        }
+        return;
+    }
+
+    routeState.originCoords = originCoords;
+    routeState.destCoords = destCoords;
+
+    routeStatusBox.classList.add('active');
+    routeStatusBadge.className = 'route-status-badge calculating';
+    routeStatusBadge.textContent = 'CHECKING HAZARDS...';
+    routeMetrics.textContent = '';
+    routeStatusMessage.textContent = 'Scanning active hazards along your route...';
+    routeNextStep.textContent = '';
+
+    const activeHazards = getAllHazards().filter((h) => h.status !== 'resolved');
+    const avoidRadius = getHazardAvoidRadiusMeters(routeState.profile);
+
+    const directRoutes = await fetchMapboxRoutes([originCoords, destCoords], routeState.profile, []);
+    if (!directRoutes.length) {
+        routeStatusBadge.className = 'route-status-badge warning';
+        routeStatusBadge.textContent = 'NO ROUTE FOUND';
+        routeStatusMessage.textContent = 'Unable to calculate a path between those two points.';
+        return;
+    }
+
+    const primaryDirect = directRoutes[0];
+    const directLatLngs = primaryDirect.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    const hazardsOnDirect = getHazardsNearRoute(directLatLngs, activeHazards, avoidRadius);
+
+    let chosenRoute = primaryDirect;
+    let hazardousOriginalLatLngs = null;
+    let avoidedHazards = [];
+    let partialAvoidance = false;
+
+    if (hazardsOnDirect.length > 0) {
+        const detourPromises = [];
+
+        if (routeState.profile.startsWith('driving')) {
+            detourPromises.push(fetchMapboxRoutes([originCoords, destCoords], routeState.profile, activeHazards));
+        }
+
+        const detourWaypoints = buildDetourWaypoints(originCoords, destCoords, hazardsOnDirect);
+        detourWaypoints.forEach((wp) => {
+            detourPromises.push(fetchMapboxRoutes([originCoords, wp, destCoords], routeState.profile, []));
+        });
+
+        const detourResults = await Promise.all(detourPromises);
+        const allCandidates = [...detourResults.flat(), ...directRoutes.slice(1)];
+
+        let bestCandidate = null;
+        let bestHitCount = Infinity;
+
+        allCandidates.forEach((candidate) => {
+            const latLngs = candidate.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+            const remainingHits = getHazardsNearRoute(latLngs, activeHazards, avoidRadius).length;
+            if (
+                remainingHits < bestHitCount ||
+                (remainingHits === bestHitCount && bestCandidate && candidate.duration < bestCandidate.duration)
+            ) {
+                bestCandidate = candidate;
+                bestHitCount = remainingHits;
+            }
+        });
+
+        if (bestCandidate && bestHitCount < hazardsOnDirect.length) {
+            chosenRoute = bestCandidate;
+            hazardousOriginalLatLngs = directLatLngs;
+            avoidedHazards = hazardsOnDirect;
+        } else {
+            chosenRoute = bestCandidate || primaryDirect;
+            partialAvoidance = true;
+            avoidedHazards = hazardsOnDirect;
+        }
+    }
+
+    routeLayerGroup.clearLayers();
+    routeState.hasActiveRoute = true;
+
+    const chosenLatLngs = chosenRoute.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+    if (hazardousOriginalLatLngs) {
+        L.polyline(hazardousOriginalLatLngs, {
+            color: '#E53935',
+            weight: 5,
+            opacity: 0.72,
+            dashArray: '9, 9'
+        })
+            .bindPopup('<strong>Blocked / Hazardous Route</strong><br>Avoided due to active hazard.')
+            .addTo(routeLayerGroup);
+    }
+
+    avoidedHazards.forEach((hazard) => {
+        L.circle(hazard.position, {
+            radius: avoidRadius,
+            color: '#E53935',
+            weight: 2,
+            fillColor: '#E53935',
+            fillOpacity: 0.16
+        })
+            .bindPopup(`<strong>Hazard Zone</strong><br>${hazard.label}`)
+            .addTo(routeLayerGroup);
+    });
+
+    const safeColor = partialAvoidance ? '#FB8C00' : '#2E7D32';
+    const safeCoreColor = partialAvoidance ? '#FFB74D' : '#4CAF50';
+
+    L.polyline(chosenLatLngs, {
+        color: '#12261E',
+        weight: 9,
+        opacity: 0.55
+    }).addTo(routeLayerGroup);
+
+    const safePolyline = L.polyline(chosenLatLngs, {
+        color: safeCoreColor,
+        weight: 6,
+        opacity: 0.96
+    }).addTo(routeLayerGroup);
+
+    L.marker(originCoords, { icon: createRouteEndpointIcon('A', '#12261E') })
+        .bindPopup(`<strong>Start:</strong> ${originText}`)
+        .addTo(routeLayerGroup);
+
+    L.marker(destCoords, { icon: createRouteEndpointIcon('B', safeColor) })
+        .bindPopup(`<strong>Destination:</strong> ${destText}`)
+        .addTo(routeLayerGroup);
+
+    const routeBounds = safePolyline.getBounds();
+    if (routeBounds.isValid()) {
+        map.fitBounds(routeBounds, { padding: [110, 140], maxZoom: 16 });
+    }
+
+    const durationText = formatRouteDuration(chosenRoute.duration);
+    const distanceText = formatRouteDistance(chosenRoute.distance);
+    routeMetrics.textContent = `${durationText} · ${distanceText}`;
+
+    const firstStep = chosenRoute.legs?.[0]?.steps?.[0];
+    const nextInstruction = firstStep?.maneuver?.instruction
+        ? `Next: ${stripHtml(firstStep.maneuver.instruction)}`
+        : '';
+    routeNextStep.textContent = nextInstruction;
+
+    if (hazardousOriginalLatLngs && avoidedHazards.length > 0) {
+        const names = avoidedHazards
+            .map((h) => `${hazardData[h.hazardKey]?.incidentName || 'Hazard'} (${h.location || 'nearby'})`)
+            .join(', ');
+        routeStatusBadge.className = 'route-status-badge rerouted';
+        routeStatusBadge.textContent = '⚠️ REROUTED AROUND HAZARD';
+        routeStatusMessage.textContent = `Safe ${routeState.profile} detour avoiding ${names}. Dashed red line shows the blocked path.`;
+
+        warningTitle.textContent = 'REROUTED';
+        warningText.textContent = `Safe detour active (${durationText}) avoiding ${names}.`;
+    } else if (partialAvoidance && avoidedHazards.length > 0) {
+        const names = avoidedHazards
+            .map((h) => `${hazardData[h.hazardKey]?.incidentName || 'Hazard'} (${h.location || 'nearby'})`)
+            .join(', ');
+        routeStatusBadge.className = 'route-status-badge warning';
+        routeStatusBadge.textContent = '⚠️ HAZARD ON ROUTE';
+        routeStatusMessage.textContent = `Active ${names} detected nearby with no side-street bypass. Proceed with caution.`;
+    } else {
+        routeStatusBadge.className = 'route-status-badge clear';
+        routeStatusBadge.textContent = '✓ SAFE ROUTE';
+        routeStatusMessage.textContent = isLiveUpdate
+            ? 'Hazard cleared — fastest direct route is now open.'
+            : 'No active hazards detected along this route.';
+    }
+}
+
+function clearRoute() {
+    routeLayerGroup.clearLayers();
+    routeState.hasActiveRoute = false;
+    routeState.destCoords = null;
+    routeDestInput.value = '';
+    setRoutePickMode(null);
+    hideRouteSuggestions();
+    if (routeStatusBox) {
+        routeStatusBox.classList.remove('active');
+    }
+}
+
+function refreshActiveRouteIfNeeded() {
+    if (routeState.hasActiveRoute && routeState.originCoords && routeState.destCoords) {
+        calculateSafeRoute(true);
+    }
+}
+
+// ================= REPORT FORM PIN & LOCATION =================
 function setSelectedReportType(typeKey) {
     hazardTypeInput.value = typeKey || '';
 
@@ -534,14 +1394,40 @@ function removeDraftPin() {
 }
 
 map.on('click', async (e) => {
-    if (!reportModal.classList.contains('active')) return;
     const coords = [e.latlng.lat, e.latlng.lng];
-    if (!updateDraftPinOnMap(coords, false)) return;
 
-    hideLocationSuggestions();
-    hazardLocationInput.value = 'Pinpointing address...';
-    const address = await reverseGeocodeCdo(coords[0], coords[1]);
-    hazardLocationInput.value = address || `${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}`;
+    if (reportModal.classList.contains('active')) {
+        if (!updateDraftPinOnMap(coords, false)) return;
+        hideLocationSuggestions();
+        hazardLocationInput.value = 'Pinpointing address...';
+        const address = await reverseGeocodeCdo(coords[0], coords[1]);
+        hazardLocationInput.value = address || `${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}`;
+        return;
+    }
+
+    if (routeState.pickMode) {
+        if (!isInsideCagayanDeOroBounds(coords)) {
+            window.alert('Please tap a point within Cagayan de Oro City.');
+            return;
+        }
+        const mode = routeState.pickMode;
+        setRoutePickMode(null);
+
+        const targetInput = mode === 'origin' ? routeOriginInput : routeDestInput;
+        targetInput.value = 'Pinpointing address...';
+        const address = await reverseGeocodeCdo(coords[0], coords[1]);
+        targetInput.value = address || `${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}`;
+
+        if (mode === 'origin') {
+            routeState.originCoords = coords;
+        } else {
+            routeState.destCoords = coords;
+        }
+
+        if (routeOriginInput.value.trim() && routeDestInput.value.trim()) {
+            calculateSafeRoute();
+        }
+    }
 });
 
 function useCurrentLocation() {
@@ -612,7 +1498,7 @@ function handleLocationInput() {
     }, 220);
 }
 
-async function fetchLocationSuggestions(query) {
+async function queryCdoSuggestions(query) {
     const qLower = query.toLowerCase();
 
     const localMatches = cdoLocalPlaces
@@ -642,13 +1528,16 @@ async function fetchLocationSuggestions(query) {
     }
 
     const seen = new Set();
-    const combined = [...localMatches, ...apiMatches].filter((item) => {
+    return [...localMatches, ...apiMatches].filter((item) => {
         const key = item.title.toLowerCase();
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
     }).slice(0, 5);
+}
 
+async function fetchLocationSuggestions(query) {
+    const combined = await queryCdoSuggestions(query);
     renderLocationSuggestions(combined);
 }
 
@@ -680,35 +1569,79 @@ function hideLocationSuggestions() {
     locationSuggestionsList.innerHTML = '';
 }
 
+const cameraFallbackBox = document.getElementById('cameraFallbackBox');
+const cameraFallbackMsg = document.getElementById('cameraFallbackMsg');
+
+function triggerFallbackPhotoPicker() {
+    if (!cameraOnlyFallbackInput) return;
+    cameraOnlyFallbackInput.value = '';
+    cameraOnlyFallbackInput.click();
+}
+
+function retakeHazardPhoto() {
+    capturedPhotoDataUrl = '';
+    capturedPhotoBox.classList.remove('active');
+    hazardPhotoPreview.src = '';
+    openLiveCamera();
+}
+
 async function openLiveCamera() {
     stopLiveCamera();
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        openCameraBtn.style.display = 'none';
+        if (cameraFallbackBox) {
+            if (cameraFallbackMsg) {
+                cameraFallbackMsg.textContent = 'Live camera requires HTTPS or localhost. Tap below to use your camera or upload a photo:';
+            }
+            cameraFallbackBox.classList.add('active');
+        }
+        triggerFallbackPhotoPicker();
+        return;
+    }
+
+    try {
         try {
             activeCameraStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: { ideal: 'environment' } },
                 audio: false
             });
-            cameraStreamVideo.srcObject = activeCameraStream;
-            openCameraBtn.style.display = 'none';
-            capturedPhotoBox.classList.remove('active');
-            liveCameraBox.classList.add('active');
-            return;
-        } catch (err) {
-            console.warn('Live WebRTC camera unavailable, falling back to native camera capture:', err);
+        } catch {
+            activeCameraStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+            });
+        }
+
+        cameraStreamVideo.srcObject = activeCameraStream;
+        await cameraStreamVideo.play();
+
+        openCameraBtn.style.display = 'none';
+        capturedPhotoBox.classList.remove('active');
+        liveCameraBox.classList.add('active');
+    } catch (err) {
+        console.warn('Live WebRTC camera unavailable:', err);
+        openCameraBtn.style.display = 'none';
+        if (cameraFallbackBox) {
+            if (cameraFallbackMsg) {
+                cameraFallbackMsg.textContent = 'Camera access was blocked or no webcam was detected.';
+            }
+            cameraFallbackBox.classList.add('active');
         }
     }
-
-    cameraOnlyFallbackInput.value = '';
-    cameraOnlyFallbackInput.click();
 }
 
 function captureLivePhoto() {
-    if (!cameraStreamVideo.videoWidth) return;
+    const width = cameraStreamVideo.videoWidth || cameraStreamVideo.clientWidth;
+    const height = cameraStreamVideo.videoHeight || cameraStreamVideo.clientHeight;
+    if (!width || !height) {
+        window.alert('Camera is still starting up—please tap Capture Photo again.');
+        return;
+    }
 
     const canvas = document.createElement('canvas');
-    canvas.width = cameraStreamVideo.videoWidth;
-    canvas.height = cameraStreamVideo.videoHeight;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(cameraStreamVideo, 0, 0, canvas.width, canvas.height);
 
@@ -722,9 +1655,16 @@ function stopLiveCamera() {
         activeCameraStream.getTracks().forEach((track) => track.stop());
         activeCameraStream = null;
     }
-    cameraStreamVideo.srcObject = null;
-    liveCameraBox.classList.remove('active');
-    if (!capturedPhotoDataUrl) {
+    if (cameraStreamVideo) {
+        cameraStreamVideo.srcObject = null;
+    }
+    if (liveCameraBox) {
+        liveCameraBox.classList.remove('active');
+    }
+    if (cameraFallbackBox) {
+        cameraFallbackBox.classList.remove('active');
+    }
+    if (!capturedPhotoDataUrl && openCameraBtn) {
         openCameraBtn.style.display = 'flex';
     }
 }
@@ -733,6 +1673,7 @@ function showCapturedPhoto(dataUrl) {
     hazardPhotoPreview.src = dataUrl;
     openCameraBtn.style.display = 'none';
     liveCameraBox.classList.remove('active');
+    if (cameraFallbackBox) cameraFallbackBox.classList.remove('active');
     capturedPhotoBox.classList.add('active');
 }
 
@@ -747,6 +1688,7 @@ cameraOnlyFallbackInput.addEventListener('change', (e) => {
     reader.readAsDataURL(file);
 });
 
+// ================= PROFILE PANEL =================
 function openProfile() {
     let panel = document.getElementById('profilePanel');
 
@@ -754,33 +1696,58 @@ function openProfile() {
         panel = document.createElement('div');
         panel.id = 'profilePanel';
         panel.className = 'profile-panel';
-        panel.innerHTML = `
-            <div class="profile-panel-inner">
-                <button class="profile-close" onclick="closeProfile()">✕</button>
-                <div class="profile-header">
-                    <div class="profile-avatar">A</div>
-                    <div>
-                        <h3>Agent Aria</h3>
-                        <p>Emergency Responder</p>
-                    </div>
-                </div>
-                <div class="profile-actions">
-                    <button type="button" onclick="openSavedAlerts()">Saved Alerts</button>
-                    <button type="button" onclick="openResponseHistory()">Response History</button>
-                    <button type="button" onclick="openSettings()">Settings</button>
-                    <button type="button" onclick="openAdminDashboard()">Admin Dashboard</button>
-                </div>
-            </div>
-        `;
+        panel.addEventListener('click', (event) => {
+            if (event.target === panel) {
+                closeProfile();
+            }
+        });
         document.body.appendChild(panel);
     }
 
+    renderProfilePanel();
     panel.classList.add('active');
-    panel.addEventListener('click', function (event) {
-        if (event.target === panel) {
-            closeProfile();
-        }
-    });
+}
+
+function renderProfilePanel() {
+    const panel = document.getElementById('profilePanel');
+    if (!panel) return;
+
+    if (!userProfile.signedIn) {
+        panel.innerHTML = `
+            <div class="profile-panel-inner">
+                <button class="profile-close" type="button" onclick="closeProfile()">✕</button>
+                <div class="profile-header">
+                    <div class="profile-avatar">?</div>
+                    <div>
+                        <h3>Signed Out</h3>
+                        <p>Sign in to manage alerts and responder tools</p>
+                    </div>
+                </div>
+                <div class="profile-actions">
+                    <button type="button" onclick="signInBack()">Sign In as ${userProfile.name}</button>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    panel.innerHTML = `
+        <div class="profile-panel-inner">
+            <button class="profile-close" type="button" onclick="closeProfile()">✕</button>
+            <div class="profile-header">
+                <div class="profile-avatar">${renderAvatarMarkup()}</div>
+                <div>
+                    <h3>${userProfile.name}</h3>
+                    <p>${getRoleLabel(userProfile.role)}</p>
+                </div>
+            </div>
+            <div class="profile-actions">
+                <button type="button" onclick="openResponseHistory()">Response History</button>
+                <button type="button" onclick="openSettings()">Settings</button>
+                <button type="button" onclick="openAdminDashboard()">Admin Dashboard</button>
+            </div>
+        </div>
+    `;
 }
 
 function closeProfile() {
@@ -790,28 +1757,280 @@ function closeProfile() {
     }
 }
 
-function openSavedAlerts() {
-    closeProfile();
+function signInBack() {
+    userProfile.signedIn = true;
+    updateTopBarProfileIcon();
+    renderProfilePanel();
+}
 
-    let panel = document.getElementById('ResponseHistoryPanel');
+// ================= SETTINGS PANEL =================
+function openSettings() {
+    closeProfile();
+    isEditingSettings = false;
+
+    let panel = document.getElementById('settingsPanel');
 
     if (!panel) {
         panel = document.createElement('div');
-        panel.id = 'ResponseHistoryPanel';
+        panel.id = 'settingsPanel';
+        panel.className = 'settings-panel';
+        panel.addEventListener('click', (event) => {
+            if (event.target === panel) {
+                closeSettings(false);
+            }
+        });
+        document.body.appendChild(panel);
+    }
+
+    renderSettingsPanel();
+    panel.classList.add('active');
+}
+
+function renderSettingsPanel() {
+    const panel = document.getElementById('settingsPanel');
+    if (!panel) return;
+
+    const roleBadgeClass = userProfile.role === 'responder' ? 'blue' : 'green';
+
+    panel.innerHTML = `
+        <div class="settings-panel-inner">
+            <div class="settings-header">
+                <div>
+                    <span class="admin-dashboard-kicker">Account</span>
+                    <h3>Settings</h3>
+                </div>
+                <button class="panel-back-btn" type="button" onclick="closeSettings(true)" aria-label="Back to Profile">
+                    ${BACK_ARROW_SVG}
+                </button>
+            </div>
+
+            <div class="settings-avatar-section">
+                <div class="settings-avatar-preview" onclick="triggerProfilePhotoUpload()" title="Click to upload profile picture">
+                    ${renderAvatarMarkup()}
+                </div>
+                <div class="settings-avatar-meta">
+                    <h4>${userProfile.name}</h4>
+                    <span class="incident-badge ${roleBadgeClass}">${getRoleLabel(userProfile.role)}</span>
+                    <div class="settings-avatar-buttons">
+                        <button type="button" class="settings-upload-btn" onclick="triggerProfilePhotoUpload()">Upload Photo</button>
+                        ${userProfile.avatarUrl ? `<button type="button" class="settings-remove-photo-btn" onclick="removeProfilePhoto()">Remove</button>` : ''}
+                    </div>
+                    <input type="file" id="profilePhotoInput" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(event)"/>
+                </div>
+            </div>
+
+            ${isEditingSettings ? `
+                <form class="settings-edit-form" onsubmit="saveSettingsProfile(event)">
+                    <div class="settings-field">
+                        <label for="settingsNameInput">Full Name</label>
+                        <input id="settingsNameInput" type="text" value="${userProfile.name.replace(/"/g, '&quot;')}" required/>
+                    </div>
+
+                    <div class="settings-field">
+                        <label for="settingsRoleSelect">Account Role</label>
+                        <select id="settingsRoleSelect">
+                            <option value="responder" ${userProfile.role === 'responder' ? 'selected' : ''}>Emergency Responder</option>
+                            <option value="regular" ${userProfile.role === 'regular' ? 'selected' : ''}>Regular User</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-field">
+                        <label for="settingsEmailInput">Email Address</label>
+                        <input id="settingsEmailInput" type="email" value="${userProfile.email.replace(/"/g, '&quot;')}" required/>
+                    </div>
+
+                    <div class="settings-field">
+                        <label for="settingsAreaInput">City / Barangay</label>
+                        <input id="settingsAreaInput" type="text" value="${userProfile.area.replace(/"/g, '&quot;')}" required/>
+                    </div>
+
+                    <div class="settings-edit-actions">
+                        <button type="button" class="settings-cancel-btn" onclick="toggleEditSettings(false)">Cancel</button>
+                        <button type="submit" class="settings-save-btn">Save Profile</button>
+                    </div>
+                </form>
+            ` : `
+                <div class="settings-info-card">
+                    <div class="settings-info-row">
+                        <span class="settings-info-label">Full Name</span>
+                        <span class="settings-info-value">${userProfile.name}</span>
+                    </div>
+                    <div class="settings-info-row">
+                        <span class="settings-info-label">Role</span>
+                        <span class="settings-info-value">${getRoleLabel(userProfile.role)}</span>
+                    </div>
+                    <div class="settings-info-row">
+                        <span class="settings-info-label">Email</span>
+                        <span class="settings-info-value">${userProfile.email}</span>
+                    </div>
+                    <div class="settings-info-row">
+                        <span class="settings-info-label">Location</span>
+                        <span class="settings-info-value">${userProfile.area}</span>
+                    </div>
+                </div>
+
+                <div class="settings-footer-actions">
+                    <button type="button" class="settings-edit-btn" onclick="toggleEditSettings(true)">Edit Profile</button>
+                    <button type="button" class="settings-signout-btn" onclick="signOutUser()">Sign Out</button>
+                </div>
+            `}
+        </div>
+    `;
+}
+
+function triggerProfilePhotoUpload() {
+    const input = document.getElementById('profilePhotoInput');
+    if (input) {
+        input.value = '';
+        input.click();
+    }
+}
+
+function handleProfilePhotoUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        userProfile.avatarUrl = ev.target.result;
+        updateTopBarProfileIcon();
+        renderSettingsPanel();
+        renderProfilePanel();
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeProfilePhoto() {
+    userProfile.avatarUrl = '';
+    updateTopBarProfileIcon();
+    renderSettingsPanel();
+    renderProfilePanel();
+}
+
+function toggleEditSettings(editing) {
+    isEditingSettings = editing;
+    renderSettingsPanel();
+}
+
+function saveSettingsProfile(event) {
+    event.preventDefault();
+
+    const nameVal = document.getElementById('settingsNameInput')?.value.trim();
+    const roleVal = document.getElementById('settingsRoleSelect')?.value || 'regular';
+    const emailVal = document.getElementById('settingsEmailInput')?.value.trim();
+    const areaVal = document.getElementById('settingsAreaInput')?.value.trim();
+
+    if (!nameVal) {
+        window.alert('Please enter your name.');
+        return;
+    }
+
+    userProfile.name = nameVal;
+    userProfile.role = roleVal;
+    userProfile.email = emailVal || userProfile.email;
+    userProfile.area = areaVal || userProfile.area;
+
+    isEditingSettings = false;
+    renderSettingsPanel();
+    renderProfilePanel();
+}
+
+function signOutUser() {
+    userProfile.signedIn = false;
+    isEditingSettings = false;
+    updateTopBarProfileIcon();
+    closeSettings(true);
+}
+
+function closeSettings(returnToProfile = false) {
+    const panel = document.getElementById('settingsPanel');
+    if (panel) {
+        panel.classList.remove('active');
+    }
+    if (returnToProfile) {
+        openProfile();
+    }
+}
+
+// ================= RESPONSE HISTORY PANEL =================
+function openResponseHistory() {
+    closeProfile();
+
+    let panel = document.getElementById('responseHistoryPanel');
+
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'responseHistoryPanel';
         panel.className = 'response-history-panel';
         panel.innerHTML = `
             <div class="response-history-inner">
                 <div class="response-history-header">
                     <div>
-                        <span class="admin-dashboard-kicker">Admin</span>
+                        <span class="admin-dashboard-kicker">Responder Log</span>
                         <h3>Response History</h3>
                     </div>
-                    <button class="response-history-close" onclick="openProfile()"><-</button>
+                    <button class="panel-back-btn" type="button" onclick="closeResponseHistory(true)" aria-label="Back to Profile">
+                        ${BACK_ARROW_SVG}
+                    </button>
                 </div>
-            
+                <div id="responseHistoryList" class="response-history-list"></div>
+            </div>
+        `;
+        panel.addEventListener('click', (event) => {
+            if (event.target === panel) {
+                closeResponseHistory(false);
+            }
+        });
+        document.body.appendChild(panel);
+    }
+
+    renderResponseHistoryList();
+    panel.classList.add('active');
+}
+
+function renderResponseHistoryList() {
+    const list = document.getElementById('responseHistoryList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (resolvedHistory.length === 0) {
+        list.innerHTML = `
+            <div class="response-history-empty">
+                No incidents marked as resolved yet.
+            </div>
+        `;
+        return;
+    }
+
+    resolvedHistory.forEach((entry) => {
+        const item = document.createElement('div');
+        item.className = 'response-history-item';
+        item.innerHTML = `
+            <div class="incident-main">
+                <span class="incident-badge green">Resolved</span>
+                <div>
+                    <h4>${entry.title}</h4>
+                    <p>${entry.location} · Resolved at ${entry.resolvedAt}</p>
+                </div>
+            </div>
+            <button type="button" class="resolve-btn undo-btn" onclick="undoResolveIncidentById('${entry.id}')">Undo</button>
+        `;
+        list.appendChild(item);
+    });
+}
+
+function closeResponseHistory(returnToProfile = false) {
+    const panel = document.getElementById('responseHistoryPanel');
+    if (panel) {
+        panel.classList.remove('active');
+    }
+    if (returnToProfile) {
+        openProfile();
     }
 }
 
+// ================= ADMIN DASHBOARD PANEL =================
 function openAdminDashboard() {
     closeProfile();
 
@@ -828,60 +2047,18 @@ function openAdminDashboard() {
                         <span class="admin-dashboard-kicker">Admin</span>
                         <h3>Incident Triage Queue</h3>
                     </div>
-                    <button class="admin-dashboard-close" onclick="closeAdminDashboard()"><-</button>
+                    <button class="panel-back-btn" type="button" onclick="closeAdminDashboard(true)" aria-label="Back to Profile">
+                        ${BACK_ARROW_SVG}
+                    </button>
                 </div>
 
                 <div class="admin-dashboard-filters">
-                    <button class="filter-chip active" data-filter="all">All</button>
-                    <button class="filter-chip" data-filter="verified">Camera Verified</button>
-                    <button class="filter-chip" data-filter="resolved">Resolved</button>
+                    <button class="filter-chip active" type="button" data-filter="all">All</button>
+                    <button class="filter-chip" type="button" data-filter="verified">Camera Verified</button>
+                    <button class="filter-chip" type="button" data-filter="resolved">Resolved</button>
                 </div>
 
-                <div class="admin-incident-list">
-                    <div class="admin-incident-item" data-priority="verified">
-                        <div class="incident-main">
-                            <span class="incident-badge blue">Verified</span>
-                            <div>
-                                <h4>Road Accident</h4>
-                                <p>Masterson Avenue · 5 minutes ago</p>
-                            </div>
-                        </div>
-                        <button class="resolve-btn" type="button">Mark as Resolved</button>
-                    </div>
-
-                    <div class="admin-incident-item" data-priority="verified">
-                        <div class="incident-main">
-                            <span class="incident-badge orange">Verified</span>
-                            <div>
-                                <h4>Fire Emergency</h4>
-                                <p>Barangay 8 · 12 minutes ago</p>
-                            </div>
-                        </div>
-                        <button class="resolve-btn" type="button">Mark as Resolved</button>
-                    </div>
-
-                    <div class="admin-incident-item" data-priority="verified">
-                        <div class="incident-main">
-                            <span class="incident-badge blue">Verified</span>
-                            <div>
-                                <h4>Flash Flood</h4>
-                                <p>Barangay 7 · 23 minutes ago</p>
-                            </div>
-                        </div>
-                        <button class="resolve-btn" type="button">Mark as Resolved</button>
-                    </div>
-
-                    <div class="admin-incident-item resolved" data-priority="resolved">
-                        <div class="incident-main">
-                            <span class="incident-badge green">Resolved</span>
-                            <div>
-                                <h4>Landslide</h4>
-                                <p>Camaman-an · 1 hour ago</p>
-                            </div>
-                        </div>
-                        <button class="resolve-btn muted" type="button">Resolved</button>
-                    </div>
-                </div>
+                <div class="admin-incident-list"></div>
             </div>
         `;
         document.body.appendChild(panel);
@@ -890,43 +2067,135 @@ function openAdminDashboard() {
             const chip = event.target.closest('.filter-chip');
             if (chip && panel.contains(chip)) {
                 panel.querySelectorAll('.filter-chip').forEach((item) => item.classList.toggle('active', item === chip));
-                filterAdminIncidents(panel, chip.dataset.filter);
-                return;
-            }
-
-            const button = event.target.closest('.resolve-btn');
-            if (button && panel.contains(button) && !button.disabled) {
-                const item = button.closest('.admin-incident-item');
-                if (!item) return;
-
-                item.classList.add('resolved');
-                item.dataset.priority = 'resolved';
-                item.querySelector('.incident-badge').textContent = 'Resolved';
-                item.querySelector('.incident-badge').className = 'incident-badge green';
-                button.textContent = 'Resolved';
-                button.classList.add('muted');
-                button.disabled = true;
-
-                const report = hazardReports.find((entry) => String(entry.id) === item.dataset.reportId);
-                if (report) {
-                    report.status = 'resolved';
-                    updateCategoryCards();
-                    renderHazardMarkers();
-                }
-
-                const activeFilter = panel.querySelector('.filter-chip.active')?.dataset.filter || 'all';
+                const activeFilter = chip.dataset.filter || 'all';
                 filterAdminIncidents(panel, activeFilter);
                 return;
             }
 
-            if (event.target === panel) closeAdminDashboard();
+            const button = event.target.closest('.resolve-btn');
+            if (button && panel.contains(button)) {
+                const item = button.closest('.admin-incident-item');
+                if (!item || !item.dataset.hazardId) return;
+
+                if (button.dataset.action === 'undo') {
+                    undoResolveIncidentById(item.dataset.hazardId);
+                } else {
+                    resolveIncidentById(item.dataset.hazardId);
+                }
+                return;
+            }
+
+            if (event.target === panel) {
+                closeAdminDashboard(false);
+            }
         });
     }
 
-    hazardReports.forEach(addAdminIncident);
+    renderAdminIncidentList();
+    panel.classList.add('active');
+}
+
+function renderAdminIncidentList() {
+    const panel = document.getElementById('adminDashboardPanel');
+    const list = panel?.querySelector('.admin-incident-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    getAllHazards().forEach((hazard) => {
+        const info = hazardData[hazard.hazardKey] || {};
+        const isResolved = hazard.status === 'resolved';
+
+        const item = document.createElement('div');
+        item.className = `admin-incident-item${isResolved ? ' resolved' : ''}`;
+        item.dataset.priority = isResolved ? 'resolved' : 'verified';
+        item.dataset.hazardId = hazard.id;
+
+        const main = document.createElement('div');
+        main.className = 'incident-main';
+
+        if (hazard.photoUrl) {
+            const thumb = document.createElement('img');
+            thumb.src = hazard.photoUrl;
+            thumb.alt = 'Live camera photo';
+            thumb.className = 'incident-photo-thumb';
+            main.appendChild(thumb);
+        }
+
+        const badge = document.createElement('span');
+        badge.className = `incident-badge ${isResolved ? 'green' : (info.badgeClass || 'blue')}`;
+        badge.textContent = isResolved ? 'Resolved' : 'Verified';
+
+        const details = document.createElement('div');
+        const title = document.createElement('h4');
+        title.textContent = info.incidentName || info.displayName || hazard.hazardKey;
+        const location = document.createElement('p');
+        location.textContent = `${hazard.location || 'Cagayan de Oro City'} · ${hazard.timeAgo || 'Just now'}`;
+        details.append(title, location);
+        main.append(badge, details);
+
+        const button = document.createElement('button');
+        button.className = `resolve-btn${isResolved ? ' undo-btn' : ''}`;
+        button.type = 'button';
+        button.dataset.action = isResolved ? 'undo' : 'resolve';
+        button.textContent = isResolved ? 'Undo' : 'Mark as Resolved';
+
+        item.append(main, button);
+        list.appendChild(item);
+    });
+
     const activeFilter = panel.querySelector('.filter-chip.active')?.dataset.filter || 'all';
     filterAdminIncidents(panel, activeFilter);
-    panel.classList.add('active');
+}
+
+function findHazardRecord(hazardId) {
+    if (hazardId.startsWith('report-')) {
+        const numericId = Number(hazardId.replace('report-', ''));
+        return hazardReports.find((entry) => entry.id === numericId) || null;
+    }
+    return defaultHazards.find((entry) => entry.id === hazardId) || null;
+}
+
+function resolveIncidentById(hazardId) {
+    const target = findHazardRecord(hazardId);
+    if (!target || target.status === 'resolved') return;
+
+    target.status = 'resolved';
+
+    const info = hazardData[target.hazardKey] || {};
+    const now = new Date();
+    const resolvedAt = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+    resolvedHistory.unshift({
+        id: hazardId,
+        title: info.incidentName || info.displayName || target.hazardKey,
+        location: target.location || 'Cagayan de Oro City',
+        resolvedAt
+    });
+
+    updateCategoryCards();
+    renderHazardMarkers();
+    renderAdminIncidentList();
+    renderResponseHistoryList();
+    refreshActiveRouteIfNeeded();
+}
+
+function undoResolveIncidentById(hazardId) {
+    const target = findHazardRecord(hazardId);
+    if (!target || target.status !== 'resolved') return;
+
+    target.status = 'active';
+
+    const historyIndex = resolvedHistory.findIndex((entry) => entry.id === hazardId);
+    if (historyIndex !== -1) {
+        resolvedHistory.splice(historyIndex, 1);
+    }
+
+    updateCategoryCards();
+    renderHazardMarkers();
+    renderAdminIncidentList();
+    renderResponseHistoryList();
+    refreshActiveRouteIfNeeded();
 }
 
 function filterAdminIncidents(panel, selectedFilter) {
@@ -936,67 +2205,17 @@ function filterAdminIncidents(panel, selectedFilter) {
     });
 }
 
-function addAdminIncident(report) {
-    const panel = document.getElementById('adminDashboardPanel');
-    const list = panel?.querySelector('.admin-incident-list');
-    if (!list || list.querySelector(`[data-report-id="${report.id}"]`)) return;
-
-    const incidentTitle = {
-        flashfloods: 'Flash Flood',
-        accidents: 'Road Accident',
-        fires: 'Fire Emergency',
-        landslides: 'Landslide'
-    }[report.hazardKey];
-
-    const item = document.createElement('div');
-    item.className = 'admin-incident-item';
-    item.dataset.priority = report.status === 'resolved' ? 'resolved' : 'verified';
-    item.dataset.reportId = String(report.id);
-
-    const main = document.createElement('div');
-    main.className = 'incident-main';
-
-    if (report.photoUrl) {
-        const thumb = document.createElement('img');
-        thumb.src = report.photoUrl;
-        thumb.alt = 'Live camera photo';
-        thumb.className = 'incident-photo-thumb';
-        main.appendChild(thumb);
-    }
-
-    const badge = document.createElement('span');
-    badge.className = `incident-badge ${report.status === 'resolved' ? 'green' : 'blue'}`;
-    badge.textContent = report.status === 'resolved' ? 'Resolved' : 'Verified';
-
-    const details = document.createElement('div');
-    const title = document.createElement('h4');
-    title.textContent = incidentTitle;
-    const location = document.createElement('p');
-    location.textContent = `${report.location} · Just now`;
-    details.append(title, location);
-    main.append(badge, details);
-
-    const button = document.createElement('button');
-    button.className = 'resolve-btn';
-    button.type = 'button';
-    button.textContent = report.status === 'resolved' ? 'Resolved' : 'Mark as Resolved';
-    if (report.status === 'resolved') {
-        item.classList.add('resolved');
-        button.classList.add('muted');
-        button.disabled = true;
-    }
-
-    item.append(main, button);
-    list.prepend(item);
-}
-
-function closeAdminDashboard() {
+function closeAdminDashboard(returnToProfile = false) {
     const panel = document.getElementById('adminDashboardPanel');
     if (panel) {
         panel.classList.remove('active');
     }
+    if (returnToProfile) {
+        openProfile();
+    }
 }
 
+// ================= REPORT FORM & SUBMISSION =================
 function setCurrentReportTime() {
     const timeInput = document.getElementById('hazardTime');
     if (!timeInput) return;
@@ -1015,14 +2234,18 @@ function formatReportTime(time24) {
     return `${hours}:${mStr} ${ampm}`;
 }
 
-function openReportForm() {
+function openReportForm(preselectedKey = '') {
     pullUpSection.classList.remove('expanded');
     pullUpSection.style.display = 'none';
+    if (categoryFeedSheet) {
+        categoryFeedSheet.classList.remove('active');
+    }
     reportModal.classList.add('active');
     setCurrentReportTime();
 
-    if (selectedHazardFilter && hazardData[selectedHazardFilter]) {
-        setSelectedReportType(selectedHazardFilter);
+    const targetType = preselectedKey || selectedHazardFilter || '';
+    if (targetType && hazardData[targetType]) {
+        setSelectedReportType(targetType);
     } else {
         setSelectedReportType('');
     }
@@ -1030,7 +2253,6 @@ function openReportForm() {
 
 function closeReportForm() {
     reportModal.classList.remove('active');
-    pullUpSection.style.display = '';
 
     if (hazardReportForm) {
         hazardReportForm.reset();
@@ -1045,6 +2267,12 @@ function closeReportForm() {
     hideLocationSuggestions();
     removeDraftPin();
     setSelectedReportType('');
+
+    if (activeFeedHazardKey) {
+        openCategoryFeed(activeFeedHazardKey);
+    } else {
+        pullUpSection.style.display = '';
+    }
 }
 
 async function getReportedPosition(hazardLocation) {
@@ -1173,25 +2401,25 @@ async function handleHazardSubmit(event) {
     hazardReports.push({
         id: reportId,
         hazardKey,
+        reporterName: userProfile.name || 'You',
+        reporterAvatar: getUserAvatarDataUri(),
         label,
+        description: hazardDetails,
         title: 'WARNING!',
         position,
         color: hazardData[hazardKey].color,
         photoUrl: capturedPhotoDataUrl,
-        location: hazardLocation,
+        location: hazardLocation.startsWith('Near ') ? hazardLocation : `Near ${hazardLocation}`,
         time: formattedTime,
         status: 'active'
     });
 
+    activeFeedHazardKey = hazardKey;
     updateCategoryCards();
-    addAdminIncident(hazardReports[hazardReports.length - 1]);
-    const adminPanel = document.getElementById('adminDashboardPanel');
-    if (adminPanel) {
-        const activeFilter = adminPanel.querySelector('.filter-chip.active')?.dataset.filter || 'all';
-        filterAdminIncidents(adminPanel, activeFilter);
-    }
+    renderAdminIncidentList();
     closeReportForm();
     selectHazard(hazardKey, true);
+    refreshActiveRouteIfNeeded();
 }
 
 function startSheetDrag(clientY) {
@@ -1251,13 +2479,73 @@ pullUpHandle.addEventListener('keydown', (e) => {
     }
 });
 
+// Category Feed Sheet handle click & swipe-down to close
+if (categoryFeedHandle) {
+    categoryFeedHandle.addEventListener('click', () => closeCategoryFeed(true));
+    categoryFeedHandle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            closeCategoryFeed(true);
+        }
+    });
+    categoryFeedHandle.addEventListener('touchstart', (e) => {
+        feedDragStartY = e.touches[0].clientY;
+        feedDragCurrentY = feedDragStartY;
+        isFeedDragging = true;
+    }, { passive: true });
+    categoryFeedHandle.addEventListener('touchmove', (e) => {
+        if (!isFeedDragging) return;
+        feedDragCurrentY = e.touches[0].clientY;
+    }, { passive: true });
+    categoryFeedHandle.addEventListener('touchend', () => {
+        if (!isFeedDragging) return;
+        if (feedDragCurrentY - feedDragStartY > 35) {
+            closeCategoryFeed(true);
+        }
+        isFeedDragging = false;
+    });
+}
+
 document.querySelectorAll('.hazard-type-pill').forEach((pill) => {
     pill.addEventListener('click', () => setSelectedReportType(pill.dataset.type));
 });
 
+if (routeOriginInput) {
+    routeOriginInput.addEventListener('input', () => handleRouteAutocomplete('origin'));
+}
+if (routeDestInput) {
+    routeDestInput.addEventListener('input', () => handleRouteAutocomplete('destination'));
+    routeDestInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            calculateSafeRoute();
+        }
+    });
+}
+
+searchInput.addEventListener('focus', () => openRoutePanel());
+searchInput.addEventListener('click', () => openRoutePanel());
+searchInput.addEventListener('input', filterHazards);
+searchInput.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const query = searchInput.value.trim();
+        if (!query) return;
+        const matches = await queryCdoSuggestions(query);
+        if (matches.length > 0) {
+            hideTopSearchSuggestions();
+            routeToDestination(matches[0].subtitle || matches[0].title, matches[0].position);
+        } else {
+            openRoutePanel();
+            routeDestInput.value = query;
+            routeState.destCoords = null;
+            calculateSafeRoute();
+        }
+    }
+});
+
 pullUpHandle.addEventListener('click', toggleSheet);
 pullUpSectionTitle.addEventListener('click', toggleSheet);
-searchInput.addEventListener('input', filterHazards);
 hazardLocationInput.addEventListener('input', handleLocationInput);
 hazardReportForm.addEventListener('submit', handleHazardSubmit);
 
