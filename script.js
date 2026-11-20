@@ -790,6 +790,28 @@ function closeProfile() {
     }
 }
 
+function openSavedAlerts() {
+    closeProfile();
+
+    let panel = document.getElementById('ResponseHistoryPanel');
+
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'ResponseHistoryPanel';
+        panel.className = 'response-history-panel';
+        panel.innerHTML = `
+            <div class="response-history-inner">
+                <div class="response-history-header">
+                    <div>
+                        <span class="admin-dashboard-kicker">Admin</span>
+                        <h3>Response History</h3>
+                    </div>
+                    <button class="response-history-close" onclick="openProfile()"><-</button>
+                </div>
+            
+    }
+}
+
 function openAdminDashboard() {
     closeProfile();
 
@@ -806,7 +828,7 @@ function openAdminDashboard() {
                         <span class="admin-dashboard-kicker">Admin</span>
                         <h3>Incident Triage Queue</h3>
                     </div>
-                    <button class="admin-dashboard-close" onclick="closeAdminDashboard()">✕</button>
+                    <button class="admin-dashboard-close" onclick="closeAdminDashboard()"><-</button>
                 </div>
 
                 <div class="admin-dashboard-filters">
