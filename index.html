@@ -10,6 +10,17 @@
 </head>
 <body>
 
+     <section id="authGate" class="auth-gate" aria-labelledby="authTitle">
+        <div class="auth-card">
+            <img src="beacon-logo.png" alt="Beacon" class="auth-logo"/>
+            <p class="auth-eyebrow">ROAD SAFETY NETWORK</p>
+            <h1 id="authTitle">Welcome to Beacon</h1>
+            <p class="auth-subtitle">Sign in with Google to report hazards and keep your profile and reports available across sessions.</p>
+            <button id="googleSignIn" class="google-button" type="button" onclick="signInWithGoogle()"><span class="google-g">G</span> Continue with Google</button>
+            <p id="authMessage" class="auth-message" role="status" aria-live="polite">Connecting to Firebase…</p>
+        </div>
+    </section> 
+    
     <div id="map"></div>
 
     <header class="top-bar">
