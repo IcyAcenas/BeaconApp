@@ -1,6 +1,6 @@
 # BeaconApp
 
-Beacon is a Leaflet hazard map with Google sign-in, profile settings, hazard reports, camera photos, and incident triage. Firebase Authentication keeps the signed-in session. Firestore stores account profiles and shared hazard reports; Firebase Storage stores profile and report photos. Reports, profile settings, sample hazard status, and response history are also cached in browser local storage for the signed-in account.
+Beacon is a road safety map with Google sign-in, profile settings, hazard reports, camera photos, and incident triage. Firebase Authentication keeps the signed-in session. Firestore stores account profiles and shared hazard reports; Firebase Storage stores profile and report photos. Reports, profile settings, sample hazard status, and response history are also cached in browser local storage for the signed-in account.
 
 ## Firebase setup
 
