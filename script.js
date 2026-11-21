@@ -74,13 +74,248 @@ const DEFAULT_PROFILE_ICON_URI = 'data:image/svg+xml;charset=UTF-8,' + encodeURI
 `);
 
 const userProfile = {
-    name: 'Agent Aria',
-    role: 'responder',
-    email: 'aria@beaconcdo.ph',
+   uid: '',
+    name: '',
+    role: 'regular',
+    email: '',
     area: 'Cagayan de Oro City',
     avatarUrl: '',
-    signedIn: true
+    signedIn: false
 };
+
+const FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyCR8BE6AqdhvwtwiCjymPFpJTIhqjgH_Xo',
+    authDomain: 'beaconapp-91c14.firebaseapp.com',
+    projectId: 'beaconapp-91c14',
+    storageBucket: 'beaconapp-91c14.firebasestorage.app',
+    messagingSenderId: '31295353440',
+    appId: '1:31295353440:web:112da096e26fd837684905',
+    measurementId: 'G-E11EM4J0W7'
+};
+
+let firebaseClient = null;
+let firebaseUser = null;
+const AUTH_CACHE_PREFIX = 'beacon.account.';
+
+function accountCacheKey(section) {
+    return `${AUTH_CACHE_PREFIX}${firebaseUser?.uid || userProfile.uid || 'guest'}.${section}`;
+}
+
+function saveLocalAppData() {
+    if (!firebaseUser) return;
+    try {
+        localStorage.setItem(accountCacheKey('profile'), JSON.stringify({
+            name: userProfile.name, role: userProfile.role, email: userProfile.email,
+            area: userProfile.area, avatarUrl: userProfile.avatarUrl
+        }));
+        localStorage.setItem(accountCacheKey('reports'), JSON.stringify(hazardReports));
+        localStorage.setItem(accountCacheKey('defaultStatuses'), JSON.stringify(
+            Object.fromEntries(defaultHazards.map((hazard) => [hazard.id, { status: hazard.status, resolvedAt: hazard.resolvedAt || '' }]))
+        ));
+        localStorage.setItem(accountCacheKey('history'), JSON.stringify(resolvedHistory));
+    } catch (error) {
+        console.warn('Could not save all Beacon data in this browser:', error);
+    }
+}
+
+function persistProfileToCloud() {
+    saveLocalAppData();
+    if (!firebaseClient || !firebaseUser) return Promise.resolve();
+    return (async () => {
+        let avatarUrl = userProfile.avatarUrl;
+        if (avatarUrl.startsWith('data:')) {
+            const avatarRef = firebaseClient.storageSdk.ref(firebaseClient.storage, `profilePhotos/${firebaseUser.uid}/avatar`);
+            const uploaded = await firebaseClient.storageSdk.uploadString(avatarRef, avatarUrl, 'data_url');
+            avatarUrl = await firebaseClient.storageSdk.getDownloadURL(uploaded.ref);
+            userProfile.avatarUrl = avatarUrl;
+        }
+        const profile = {
+            uid: firebaseUser.uid, name: userProfile.name, role: userProfile.role,
+            email: userProfile.email, area: userProfile.area, photoURL: avatarUrl,
+            updatedAt: firebaseClient.dbSdk.serverTimestamp()
+        };
+        await firebaseClient.dbSdk.setDoc(firebaseClient.dbSdk.doc(firebaseClient.db, 'users', firebaseUser.uid), profile, { merge: true });
+    })().catch((error) => console.error('Could not sync Beacon profile:', error));
+}
+
+async function signInWithGoogle() {
+    const button = document.getElementById('googleSignIn');
+    const message = document.getElementById('authMessage');
+    try {
+        if (!firebaseClient) throw new Error('Firebase is still connecting. Please try again.');
+        if (button) button.disabled = true;
+        if (message) { message.classList.remove('error'); message.textContent = 'Opening Google sign-in…'; }
+        await firebaseClient.authSdk.signInWithPopup(firebaseClient.auth, firebaseClient.provider);
+    } catch (error) {
+        if (button) button.disabled = false;
+        if (message) {
+            message.classList.add('error');
+            message.textContent = error.code === 'auth/unauthorized-domain'
+                ? 'Add this app domain to Firebase Authentication authorized domains.'
+                : error.code === 'auth/popup-closed-by-user'
+                    ? 'Google sign-in was closed before it finished.'
+                    : error.message || 'Google sign-in failed.';
+        }
+    }
+}
+
+async function initializeFirebase() {
+    const message = document.getElementById('authMessage');
+    try {
+        const version = '13.3.0';
+        const [appSdk, authSdk, dbSdk, storageSdk] = await Promise.all([
+            import(`https://www.gstatic.com/firebasejs/${version}/firebase-app.js`),
+            import(`https://www.gstatic.com/firebasejs/${version}/firebase-auth.js`),
+            import(`https://www.gstatic.com/firebasejs/${version}/firebase-firestore.js`),
+            import(`https://www.gstatic.com/firebasejs/${version}/firebase-storage.js`)
+        ]);
+        const app = appSdk.initializeApp(FIREBASE_CONFIG);
+        const auth = authSdk.getAuth(app);
+        const db = dbSdk.getFirestore(app);
+        const storage = storageSdk.getStorage(app);
+        firebaseClient = { authSdk, dbSdk, storageSdk, auth, db, storage, provider: new authSdk.GoogleAuthProvider() };
+        authSdk.onAuthStateChanged(auth, async (user) => {
+            firebaseUser = user;
+            if (!user) {
+                userProfile.signedIn = false;
+                userProfile.uid = '';
+                document.getElementById('authGate').hidden = false;
+                if (message) { message.classList.remove('error'); message.textContent = 'Sign in to continue.'; }
+                updateTopBarProfileIcon();
+                return;
+            }
+              userProfile.uid = user.uid;
+            userProfile.signedIn = true;
+            userProfile.name = user.displayName || user.email || 'Beacon member';
+            userProfile.email = user.email || '';
+            userProfile.avatarUrl = user.photoURL || '';
+            document.getElementById('authGate').hidden = true;
+            try {
+                const cachedProfile = JSON.parse(localStorage.getItem(accountCacheKey('profile')) || 'null');
+                if (cachedProfile) Object.assign(userProfile, cachedProfile);
+                const profileRef = dbSdk.doc(db, 'users', user.uid);
+                const profileSnapshot = await dbSdk.getDoc(profileRef);
+                if (profileSnapshot.exists()) {
+                    const profile = profileSnapshot.data();
+                    userProfile.name = profile.name || userProfile.name;
+                    userProfile.role = profile.role || 'regular';
+                    userProfile.email = profile.email || userProfile.email;
+                    userProfile.area = profile.area || 'Cagayan de Oro City';
+                    userProfile.avatarUrl = profile.photoURL || userProfile.avatarUrl;
+                } else {
+                    await persistProfileToCloud();
+                }
+                await loadAccountData();
+            } catch (error) {
+                console.warn('Firestore could not be reached; restoring this account from browser storage:', error);
+                loadLocalAccountData();
+            }
+            saveLocalAppData();
+            updateTopBarProfileIcon();
+            updateCategoryCards();
+            renderHazardMarkers();
+            renderExpandedFeed();
+            renderProfilePanel();
+            if (message) message.textContent = '';
+        });
+    } catch (error) {
+        console.error('Firebase initialization failed:', error);
+        if (message) {
+            message.classList.add('error');
+            message.textContent = 'Firebase could not connect. Check the app setup and internet connection.';
+        }
+    }
+}
+
+function loadLocalAccountData() {
+    try {
+        const profile = JSON.parse(localStorage.getItem(accountCacheKey('profile')) || 'null');
+        if (profile) Object.assign(userProfile, profile);
+        const reports = JSON.parse(localStorage.getItem(accountCacheKey('reports')) || '[]');
+        hazardReports.splice(0, hazardReports.length, ...(Array.isArray(reports) ? reports : []));
+        const statuses = JSON.parse(localStorage.getItem(accountCacheKey('defaultStatuses')) || '{}');
+        defaultHazards.forEach((hazard) => {
+            if (statuses[hazard.id]) Object.assign(hazard, statuses[hazard.id]);
+        });
+        const history = JSON.parse(localStorage.getItem(accountCacheKey('history')) || '[]');
+        resolvedHistory.splice(0, resolvedHistory.length, ...(Array.isArray(history) ? history : []));
+    } catch (error) {
+        console.warn('Could not restore local Beacon data:', error);
+    }
+}
+
+async function loadAccountData() {
+    try {
+        const reports = JSON.parse(localStorage.getItem(accountCacheKey('reports')) || '[]');
+        hazardReports.splice(0, hazardReports.length, ...(Array.isArray(reports) ? reports : []));
+        const statuses = JSON.parse(localStorage.getItem(accountCacheKey('defaultStatuses')) || '{}');
+        defaultHazards.forEach((hazard) => {
+            if (statuses[hazard.id]) Object.assign(hazard, statuses[hazard.id]);
+        });
+          const history = JSON.parse(localStorage.getItem(accountCacheKey('history')) || '[]');
+        resolvedHistory.splice(0, resolvedHistory.length, ...(Array.isArray(history) ? history : []));
+    } catch (error) {
+        console.warn('Could not restore local incident data:', error);
+    }
+    const { dbSdk, db } = firebaseClient;
+    const snapshot = await dbSdk.getDocs(dbSdk.collection(db, 'hazardReports'));
+    const byId = new Map(hazardReports.map((report) => [String(report.id), report]));
+    const remoteReportIds = new Set();
+    snapshot.docs.forEach((docSnapshot) => {
+        const data = docSnapshot.data();
+        if (data.isDefaultHazard) {
+            const sample = defaultHazards.find((hazard) => hazard.id === docSnapshot.id);
+            if (sample && data.status) Object.assign(sample, { status: data.status, resolvedAt: data.resolvedAt || '' });
+            return;
+        }
+        const report = { id: data.id || docSnapshot.id, ...data };
+        byId.set(String(report.id), report);
+        remoteReportIds.add(String(report.id));
+    });
+     hazardReports.splice(0, hazardReports.length, ...byId.values());
+    const knownHistory = new Set(resolvedHistory.map((entry) => entry.id));
+    [...defaultHazards, ...hazardReports].forEach((hazard) => {
+        const id = hazard.id.startsWith('default-') ? hazard.id : `report-${hazard.id}`;
+        if (hazard.status === 'resolved' && !knownHistory.has(id)) {
+            const info = hazardData[hazard.hazardKey] || {};
+            resolvedHistory.push({ id, title: info.incidentName || info.displayName || hazard.hazardKey,
+                location: hazard.location || 'Cagayan de Oro City',
+                resolvedAt: hazard.resolvedAt ? new Date(hazard.resolvedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Previously resolved' });
+        }
+    });
+    saveLocalAppData();
+    for (const report of hazardReports) {
+        if (!remoteReportIds.has(String(report.id))) {
+            try { await saveHazardReport(report); }
+            catch (error) { console.warn(`Could not sync report ${report.id}; it remains in this device cache:`, error); }
+        }
+    }
+    for (const hazard of defaultHazards) {
+        if (hazard.status === 'resolved' && !snapshot.docs.some((item) => item.id === hazard.id)) {
+            try { await saveHazardReport(hazard, true); }
+            catch (error) { console.warn(`Could not sync sample status ${hazard.id}:`, error); }
+        }
+    }
+}
+
+async function saveHazardReport(report, isDefaultHazard = false) {
+    saveLocalAppData();
+    if (!firebaseClient || !firebaseUser) return;
+    const dbSdk = firebaseClient.dbSdk;
+    const recordId = String(report.id);
+    const record = isDefaultHazard ? { isDefaultHazard: true, id: recordId, hazardKey: report.hazardKey,
+        status: report.status, resolvedAt: report.resolvedAt || '', updatedAt: dbSdk.serverTimestamp() }
+        : { ...report, id: recordId, reporterUid: report.reporterUid || firebaseUser.uid,
+            updatedAt: dbSdk.serverTimestamp() };
+    if (!isDefaultHazard && typeof report.photoUrl === 'string' && report.photoUrl.startsWith('data:')) {
+        const photoRef = firebaseClient.storageSdk.ref(firebaseClient.storage, `hazardPhotos/${firebaseUser.uid}/${recordId}`);
+        const uploaded = await firebaseClient.storageSdk.uploadString(photoRef, report.photoUrl, 'data_url');
+        record.photoUrl = await firebaseClient.storageSdk.getDownloadURL(uploaded.ref);
+        report.photoUrl = record.photoUrl;
+    }
+    await dbSdk.setDoc(dbSdk.doc(firebaseClient.db, 'hazardReports', recordId), record, { merge: true });
+    saveLocalAppData();
+}    
 
 let isEditingSettings = false;
 let activeFeedHazardKey = null;
@@ -1758,9 +1993,7 @@ function closeProfile() {
 }
 
 function signInBack() {
-    userProfile.signedIn = true;
-    updateTopBarProfileIcon();
-    renderProfilePanel();
+      signInWithGoogle();
 }
 
 // ================= SETTINGS PANEL =================
@@ -1896,6 +2129,7 @@ function handleProfilePhotoUpload(event) {
         updateTopBarProfileIcon();
         renderSettingsPanel();
         renderProfilePanel();
+        persistProfileToCloud();
     };
     reader.readAsDataURL(file);
 }
@@ -1905,6 +2139,7 @@ function removeProfilePhoto() {
     updateTopBarProfileIcon();
     renderSettingsPanel();
     renderProfilePanel();
+    persistProfileToCloud();
 }
 
 function toggleEditSettings(editing) {
@@ -1912,7 +2147,7 @@ function toggleEditSettings(editing) {
     renderSettingsPanel();
 }
 
-function saveSettingsProfile(event) {
+async function saveSettingsProfile(event) {
     event.preventDefault();
 
     const nameVal = document.getElementById('settingsNameInput')?.value.trim();
@@ -1930,12 +2165,19 @@ function saveSettingsProfile(event) {
     userProfile.email = emailVal || userProfile.email;
     userProfile.area = areaVal || userProfile.area;
 
+    if (firebaseClient && firebaseUser && firebaseUser.displayName !== nameVal) {
+        try { await firebaseClient.authSdk.updateProfile(firebaseUser, { displayName: nameVal }); }
+        catch (error) { console.warn('Could not update the Google display name:', error); }
+    }
+    await persistProfileToCloud();
+    
     isEditingSettings = false;
     renderSettingsPanel();
     renderProfilePanel();
 }
 
-function signOutUser() {
+async function signOutUser() {
+    if (firebaseClient) await firebaseClient.authSdk.signOut(firebaseClient.auth);
     userProfile.signedIn = false;
     isEditingSettings = false;
     updateTopBarProfileIcon();
@@ -2150,8 +2392,8 @@ function renderAdminIncidentList() {
 
 function findHazardRecord(hazardId) {
     if (hazardId.startsWith('report-')) {
-        const numericId = Number(hazardId.replace('report-', ''));
-        return hazardReports.find((entry) => entry.id === numericId) || null;
+         const reportId = hazardId.slice('report-'.length);
+        return hazardReports.find((entry) => String(entry.id) === reportId) || null;
     }
     return defaultHazards.find((entry) => entry.id === hazardId) || null;
 }
@@ -2161,6 +2403,7 @@ function resolveIncidentById(hazardId) {
     if (!target || target.status === 'resolved') return;
 
     target.status = 'resolved';
+    target.resolvedAt = new Date().toISOString();
 
     const info = hazardData[target.hazardKey] || {};
     const now = new Date();
@@ -2173,6 +2416,11 @@ function resolveIncidentById(hazardId) {
         resolvedAt
     });
 
+    saveHazardReport(target, hazardId.startsWith('default-')).catch((error) => {
+        console.error('Could not sync resolved status:', error);
+        window.alert('The status was saved on this device, but could not sync to Firebase.');
+    }); 
+    
     updateCategoryCards();
     renderHazardMarkers();
     renderAdminIncidentList();
@@ -2185,12 +2433,18 @@ function undoResolveIncidentById(hazardId) {
     if (!target || target.status !== 'resolved') return;
 
     target.status = 'active';
-
+    target.resolvedAt = '';
+    
     const historyIndex = resolvedHistory.findIndex((entry) => entry.id === hazardId);
     if (historyIndex !== -1) {
         resolvedHistory.splice(historyIndex, 1);
     }
 
+ saveHazardReport(target, hazardId.startsWith('default-')).catch((error) => {
+        console.error('Could not sync restored status:', error);
+        window.alert('The status change was saved on this device, but could not sync to Firebase.');
+    });
+    
     updateCategoryCards();
     renderHazardMarkers();
     renderAdminIncidentList();
@@ -2395,10 +2649,8 @@ async function handleHazardSubmit(event) {
     const formattedTime = formatReportTime(hazardTimeRaw);
     const label = `${hazardKey === 'flashfloods' ? 'Flash flood' : hazardKey === 'accidents' ? 'Road accident' : hazardKey === 'fires' ? 'Fire emergency' : 'Landslide'} reported near ${hazardLocation} at ${formattedTime}${hazardDetails ? ' — ' + hazardDetails : ''}`;
 
-    hazardReportCounter += 1;
-    const reportId = hazardReportCounter;
-
-    hazardReports.push({
+    const reportId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const report = {
         id: reportId,
         hazardKey,
         reporterName: userProfile.name || 'You',
@@ -2411,8 +2663,18 @@ async function handleHazardSubmit(event) {
         photoUrl: capturedPhotoDataUrl,
         location: hazardLocation.startsWith('Near ') ? hazardLocation : `Near ${hazardLocation}`,
         time: formattedTime,
-        status: 'active'
-    });
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        reporterUid: userProfile.uid || '',
+        resolvedAt: ''
+    };
+    hazardReports.push(report);
+    try {
+        await saveHazardReport(report);
+    } catch (error) {
+        console.error('Could not sync hazard report:', error);
+        window.alert('Your report was saved on this device, but could not sync to Firebase.');
+    }
 
     activeFeedHazardKey = hazardKey;
     updateCategoryCards();
@@ -2553,3 +2815,4 @@ setDefaultImages();
 updateCategoryCards();
 renderHazardMarkers();
 filterHazards();
+initializeFirebase();
