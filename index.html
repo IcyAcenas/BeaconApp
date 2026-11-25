@@ -101,6 +101,7 @@
         <div id="warningheader">
             <span id="warningicon">⚠️</span>
             <h2 id="warningtitle">WARNING!</h2>
+            <button id="warningclose" class="warning-close" type="button" onclick="dismissWarning()" aria-label="Dismiss warning">✕</button>
         </div>
 
         <p id="warningtext">Flash Flood reported within 300 meters</p>
@@ -219,7 +220,12 @@
 
         <div class="pullup-header-row">
             <h3 id="PullUpSectionTitle">ACTIVE HAZARDS</h3>
-            <button id="reportButton" class="report-button" onclick="openReportForm()">+ Report Hazard</button>
+            <div class="pullup-header-actions">
+                <button id="reportButton" class="report-button" onclick="openReportForm()">+ Report Hazard</button>
+                <button id="pullUpCollapseBtn" class="pullup-collapse-btn" type="button" onclick="toggleSheetCollapsed(event)" aria-label="Hide or show hazards drawer">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+            </div>
         </div>
 
         <div class="pullup-scroll-body">

@@ -318,6 +318,50 @@ async function saveHazardReport(report, isDefaultHazard = false) {
 }    
 
 let isEditingSettings = false;
+
+// ================= TOAST FEEDBACK =================
+let toastTimer = null;
+
+function showToast(message, type = 'success', duration = 4500) {
+    let el = document.getElementById('appToast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'appToast';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.className = `app-toast ${type} visible`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('visible'), duration);
+}
+
+function setSaveButtonState(saving) {
+    const btn = document.querySelector('.save-report-btn');
+    if (!btn) return;
+    btn.disabled = saving;
+    btn.textContent = saving ? 'Saving report…' : 'Save';
+}
+
+// ================= DISMISSIBLE WARNING BANNER =================
+// The banner can be closed with the X and stays closed until a *different* warning is shown.
+let lastWarningKey = 'WARNING!|Flash Flood reported within 300 meters';
+
+function showWarning(title, text) {
+    warningTitle.textContent = title;
+    warningText.textContent = text;
+    const key = `${title}|${text}`;
+    if (key !== lastWarningKey) {
+        lastWarningKey = key;
+        warningBanner.classList.remove('dismissed');
+    }
+}
+
+function dismissWarning() {
+    warningBanner.classList.add('dismissed');
+}
+window.dismissWarning = dismissWarning;
 let activeFeedHazardKey = null;
 
 const hazardData = {
@@ -485,6 +529,10 @@ const categoryCardElements = {
 };
 
 const cdoLocalPlaces = [
+    // Landmarks people know by brand / nickname instead of street address.
+    // Coordinates are approximate; map and online results refine them.
+    { name: 'Xavier University – Ateneo de Cagayan, Corrales Avenue, Cagayan de Oro City', sub: 'Corrales Avenue, Cagayan de Oro', position: [8.4857, 124.6564],
+      aliases: ['ateneo de cagayan', 'ateneo', 'xavier university', 'xavier u', 'ateneo de cagayan xavier university'] },
     { name: 'Don Apolinar Velez St., Cagayan de Oro City', sub: 'City Proper, Cagayan de Oro', position: [8.4867, 124.6491] },
     { name: 'Claro M. Recto Avenue, Cagayan de Oro City', sub: 'Lapasan / Poblacion, CDO', position: [8.4847, 124.6562] },
     { name: 'Corrales Avenue, Cagayan de Oro City', sub: 'City Proper, Cagayan de Oro', position: [8.4812, 124.6488] },
@@ -545,10 +593,18 @@ let hazardReportCounter = 0;
 window.hazardReports = hazardReports;
 window.hazardData = hazardData;
 
-function getHazardAvoidRadiusMeters(profile = routeState.profile) {
-    if (profile === 'walking') return 140;
-    if (profile === 'cycling') return 165;
-    return 220;
+// Hazards that stop travel. Fires, floods and landslides block EVERY mode
+// (walking, biking, driving). Accidents are only passable on foot.
+const HAZARD_BLOCK_RADIUS_METERS = { fires: 200, flashfloods: 150, landslides: 150, accidents: 90 };
+const ROUTE_MODE_LABELS = { driving: 'driving', walking: 'walking', cycling: 'biking' };
+
+function hazardBlocksProfile(hazard, profile = routeState.profile) {
+    if (hazard.hazardKey === 'accidents') return profile !== 'walking';
+    return true;
+}
+
+function getHazardAvoidRadiusMeters(hazard) {
+    return HAZARD_BLOCK_RADIUS_METERS[hazard.hazardKey] || 150;
 }
 
 function getRoleLabel(role) {
@@ -645,8 +701,7 @@ function renderExpandedFeed() {
             <span class="expanded-feed-badge">${item.status === 'resolved' ? 'Resolved' : 'Active'}</span>
         `;
         row.addEventListener('click', () => {
-            warningText.textContent = item.label;
-            warningTitle.textContent = item.title;
+            showWarning(item.title, item.label);
             pullUpSection.classList.remove('expanded');
             openCategoryFeed(item.hazardKey);
             map.flyTo(item.position, 16, { duration: 1.0 });
@@ -832,8 +887,7 @@ function renderCategoryFeed(hazardKey) {
 
         // Clicking the card/photo focuses that incident on the map
         postEl.addEventListener('click', () => {
-            warningText.textContent = report.label;
-            warningTitle.textContent = report.title;
+            showWarning(report.title, report.label);
             map.flyTo(report.position, 16, { duration: 0.9 });
         });
 
@@ -841,13 +895,32 @@ function renderCategoryFeed(hazardKey) {
     });
 }
 
+function getSheetState() {
+    if (pullUpSection.classList.contains('collapsed')) return 'collapsed';
+    if (pullUpSection.classList.contains('expanded')) return 'expanded';
+    return 'default';
+}
+
+function setSheetState(state) {
+    pullUpSection.classList.toggle('expanded', state === 'expanded');
+    pullUpSection.classList.toggle('collapsed', state === 'collapsed');
+}
+
 function toggleSheet() {
     if (suppressNextHandleClick) {
         suppressNextHandleClick = false;
         return;
     }
-    pullUpSection.classList.toggle('expanded');
+    const state = getSheetState();
+    setSheetState(state === 'collapsed' ? 'default' : state === 'default' ? 'expanded' : 'default');
 }
+
+// Lets phone users pull the drawer all the way down to see the whole map.
+function toggleSheetCollapsed(event) {
+    if (event) event.stopPropagation();
+    setSheetState(getSheetState() === 'collapsed' ? 'default' : 'collapsed');
+}
+window.toggleSheetCollapsed = toggleSheetCollapsed;
 
 function clearSearch() {
     searchInput.value = '';
@@ -1008,8 +1081,7 @@ function renderHazardMarkers() {
         marker.bindPopup(`<strong>${details.hazardKey.toUpperCase()}</strong><br>${details.label}`);
         marker.on('click', () => {
             if (reportModal.classList.contains('active') || routeState.pickMode) return;
-            warningText.textContent = details.label;
-            warningTitle.textContent = details.title;
+            showWarning(details.title, details.label);
             selectHazard(details.hazardKey, true);
         });
         hazardMarkers[details.id] = marker;
@@ -1031,8 +1103,7 @@ function selectHazard(hazardKey, forceSelect = false) {
     const latestHazard = activeMatching[0] || hazardData[hazardKey];
 
     if (latestHazard) {
-        warningText.textContent = latestHazard.label;
-        warningTitle.textContent = latestHazard.title;
+        showWarning(latestHazard.title, latestHazard.label);
     }
 
     renderHazardMarkers();
@@ -1256,18 +1327,22 @@ function pointToSegmentDistanceMeters(point, segStart, segEnd) {
     return haversineDistanceMeters(point, projected);
 }
 
-function getHazardsNearRoute(routeLatLngs, activeHazards, radiusMeters = getHazardAvoidRadiusMeters()) {
+function hazardsWithinRoute(routeLatLngs, hazards) {
     if (!routeLatLngs || routeLatLngs.length < 2) return [];
 
-    return activeHazards.filter((hazard) => {
+    return hazards.filter((hazard) => {
+        const radius = getHazardAvoidRadiusMeters(hazard);
         for (let i = 0; i < routeLatLngs.length - 1; i += 1) {
-            const dist = pointToSegmentDistanceMeters(hazard.position, routeLatLngs[i], routeLatLngs[i + 1]);
-            if (dist <= radiusMeters) {
+            if (pointToSegmentDistanceMeters(hazard.position, routeLatLngs[i], routeLatLngs[i + 1]) <= radius) {
                 return true;
             }
         }
         return false;
     });
+}
+
+function getHazardsNearRoute(routeLatLngs, activeHazards, profile = routeState.profile) {
+    return hazardsWithinRoute(routeLatLngs, activeHazards.filter((hazard) => hazardBlocksProfile(hazard, profile)));
 }
 
 async function fetchMapboxRoutes(waypoints, profile, excludedHazards = []) {
@@ -1280,7 +1355,9 @@ async function fetchMapboxRoutes(waypoints, profile, excludedHazards = []) {
         access_token: MAPBOX_TOKEN
     });
 
-    if (excludedHazards.length > 0 && profile.startsWith('driving')) {
+    // Mapbox only supports the "exclude" point list for the driving profile.
+    // Walking and biking are kept safe by the detour search in calculateSafeRoute.
+    if (excludedHazards.length > 0 && profile === 'driving') {
         const excludePoints = excludedHazards
             .slice(0, 50)
             .map((h) => `point(${h.position[1].toFixed(6)} ${h.position[0].toFixed(6)})`)
@@ -1288,45 +1365,45 @@ async function fetchMapboxRoutes(waypoints, profile, excludedHazards = []) {
         params.set('exclude', excludePoints);
     }
 
-    const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordStr}?${params.toString()}`;
-    const response = await fetch(url);
-    if (!response.ok) return [];
-    const data = await response.json();
-    return Array.isArray(data.routes) ? data.routes : [];
+    try {
+        const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordStr}?${params.toString()}`;
+        const response = await fetch(url);
+        if (!response.ok) return [];
+        const data = await response.json();
+        return Array.isArray(data.routes) ? data.routes : [];
+    } catch (error) {
+        console.warn('Route request failed:', error);
+        return [];
+    }
 }
 
+// Drops candidate via-points on rings around each blocking hazard. Mapbox snaps each
+// point to the nearest street (major roads, side streets or footpaths depending on the
+// mode), so detours can use narrow streets whenever those are the safer option.
 function buildDetourWaypoints(originCoords, destCoords, blockingHazards) {
-    if (!blockingHazards.length) return [];
-
-    const centerLat = blockingHazards.reduce((sum, h) => sum + h.position[0], 0) / blockingHazards.length;
-    const centerLng = blockingHazards.reduce((sum, h) => sum + h.position[1], 0) / blockingHazards.length;
-
-    const metersPerDegLat = 111320;
-    const metersPerDegLng = 111320 * Math.cos((centerLat * Math.PI) / 180);
-
-    const vx = (destCoords[1] - originCoords[1]) * metersPerDegLng;
-    const vy = (destCoords[0] - originCoords[0]) * metersPerDegLat;
-    const len = Math.hypot(vx, vy) || 1;
-
-    const normals = [
-        [-vy / len, vx / len],
-        [vy / len, -vx / len]
-    ];
-
-    const offsetsMeters = routeState.profile === 'driving' ? [300, 500] : [220, 360, 520];
     const waypoints = [];
 
-    normals.forEach(([nx, ny]) => {
-        offsetsMeters.forEach((dist) => {
-            const wpLat = centerLat + (ny * dist) / metersPerDegLat;
-            const wpLng = centerLng + (nx * dist) / metersPerDegLng;
-            if (isInsideCagayanDeOroBounds([wpLat, wpLng])) {
-                waypoints.push([wpLat, wpLng]);
+    blockingHazards.slice(0, 4).forEach((hazard) => {
+        const [lat, lng] = hazard.position;
+        const base = getHazardAvoidRadiusMeters(hazard);
+        const metersPerDegLat = 111320;
+        const metersPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180);
+
+        [1.6, 2.6, 4].forEach((factor) => {
+            const dist = base * factor + 100;
+            for (let deg = 0; deg < 360; deg += 45) {
+                const rad = (deg * Math.PI) / 180;
+                const wp = [
+                    lat + (Math.cos(rad) * dist) / metersPerDegLat,
+                    lng + (Math.sin(rad) * dist) / metersPerDegLng
+                ];
+                if (isInsideCagayanDeOroBounds(wp)) waypoints.push(wp);
             }
         });
     });
 
-    return waypoints;
+    const detourLength = (wp) => haversineDistanceMeters(originCoords, wp) + haversineDistanceMeters(wp, destCoords);
+    return waypoints.sort((a, b) => detourLength(a) - detourLength(b)).slice(0, 16);
 }
 
 function formatRouteDuration(seconds) {
@@ -1383,86 +1460,100 @@ async function calculateSafeRoute(isLiveUpdate = false) {
     routeStatusMessage.textContent = 'Scanning active hazards along your route...';
     routeNextStep.textContent = '';
 
+    const profile = routeState.profile;
+    const modeLabel = ROUTE_MODE_LABELS[profile] || profile;
     const activeHazards = getAllHazards().filter((h) => h.status !== 'resolved');
-    const avoidRadius = getHazardAvoidRadiusMeters(routeState.profile);
+    // Same rule for every mode: fires, floods and landslides always block.
+    // Accidents block bikes and cars, but people on foot may walk through them.
+    const blockingHazards = activeHazards.filter((h) => hazardBlocksProfile(h, profile));
 
-    const directRoutes = await fetchMapboxRoutes([originCoords, destCoords], routeState.profile, []);
-    if (!directRoutes.length) {
+    const evaluate = (route) => {
+        const latLngs = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        return { route, latLngs, hits: hazardsWithinRoute(latLngs, blockingHazards) };
+    };
+
+    const plainRoutes = await fetchMapboxRoutes([originCoords, destCoords], profile, []);
+    if (!plainRoutes.length) {
         routeStatusBadge.className = 'route-status-badge warning';
         routeStatusBadge.textContent = 'NO ROUTE FOUND';
         routeStatusMessage.textContent = 'Unable to calculate a path between those two points.';
         return;
     }
 
-    const primaryDirect = directRoutes[0];
-    const directLatLngs = primaryDirect.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-    const hazardsOnDirect = getHazardsNearRoute(directLatLngs, activeHazards, avoidRadius);
+    const candidates = [];
+    const seen = new Set();
+    const addCandidates = (routes) => routes.forEach((route) => {
+        const key = `${Math.round(route.duration)}-${Math.round(route.distance)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        candidates.push(evaluate(route));
+    });
 
-    let chosenRoute = primaryDirect;
-    let hazardousOriginalLatLngs = null;
-    let avoidedHazards = [];
-    let partialAvoidance = false;
+    addCandidates(plainRoutes);
+    const directCandidates = candidates.slice();
+    const primary = directCandidates[0];
 
-    if (hazardsOnDirect.length > 0) {
-        const detourPromises = [];
-
-        if (routeState.profile.startsWith('driving')) {
-            detourPromises.push(fetchMapboxRoutes([originCoords, destCoords], routeState.profile, activeHazards));
+    const fetchDetours = async (hazards) => {
+        const jobs = [];
+        if (profile === 'driving') {
+            jobs.push(fetchMapboxRoutes([originCoords, destCoords], profile, blockingHazards));
         }
-
-        const detourWaypoints = buildDetourWaypoints(originCoords, destCoords, hazardsOnDirect);
-        detourWaypoints.forEach((wp) => {
-            detourPromises.push(fetchMapboxRoutes([originCoords, wp, destCoords], routeState.profile, []));
+        buildDetourWaypoints(originCoords, destCoords, hazards).forEach((wp) => {
+            jobs.push(fetchMapboxRoutes([originCoords, wp, destCoords], profile, []));
         });
+        return (await Promise.all(jobs)).flat();
+    };
 
-        const detourResults = await Promise.all(detourPromises);
-        const allCandidates = [...detourResults.flat(), ...directRoutes.slice(1)];
+    if (primary.hits.length > 0) {
+        addCandidates(await fetchDetours(primary.hits));
 
-        let bestCandidate = null;
-        let bestHitCount = Infinity;
-
-        allCandidates.forEach((candidate) => {
-            const latLngs = candidate.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-            const remainingHits = getHazardsNearRoute(latLngs, activeHazards, avoidRadius).length;
-            if (
-                remainingHits < bestHitCount ||
-                (remainingHits === bestHitCount && bestCandidate && candidate.duration < bestCandidate.duration)
-            ) {
-                bestCandidate = candidate;
-                bestHitCount = remainingHits;
+        if (!candidates.some((c) => c.hits.length === 0)) {
+            // Second pass: also swing around any hazard the best detour still runs into.
+            const nearMiss = [...candidates].sort((a, b) => a.hits.length - b.hits.length)[0];
+            if (nearMiss.hits.some((h) => !primary.hits.includes(h))) {
+                const merged = [...new Map([...primary.hits, ...nearMiss.hits].map((h) => [h.id, h])).values()];
+                addCandidates(await fetchDetours(merged));
             }
-        });
-
-        if (bestCandidate && bestHitCount < hazardsOnDirect.length) {
-            chosenRoute = bestCandidate;
-            hazardousOriginalLatLngs = directLatLngs;
-            avoidedHazards = hazardsOnDirect;
-        } else {
-            chosenRoute = bestCandidate || primaryDirect;
-            partialAvoidance = true;
-            avoidedHazards = hazardsOnDirect;
         }
     }
 
+    const byDuration = (a, b) => a.route.duration - b.route.duration;
+    const safeRoutes = candidates.filter((c) => c.hits.length === 0).sort(byDuration);
+    const chosen = safeRoutes[0] || null;
+
+    const directDangerous = directCandidates.filter((c) => c.hits.length > 0);
+    const otherDangerous = candidates.filter((c) => c.hits.length > 0 && !directDangerous.includes(c)).sort(byDuration);
+    const dangerousShown = (chosen
+        ? directDangerous.slice(0, 2)
+        : [...directDangerous, ...otherDangerous].slice(0, 3));
+
+    const hazardNames = (hazards) => [...new Set(hazards.map(
+        (h) => `${hazardData[h.hazardKey]?.incidentName || 'Hazard'} (${h.location || 'nearby'})`
+    ))].join(', ');
+
+    // ---- draw ----
     routeLayerGroup.clearLayers();
     routeState.hasActiveRoute = true;
+    const fitLayers = [];
+    const hazardZones = new Map();
 
-    const chosenLatLngs = chosenRoute.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-
-    if (hazardousOriginalLatLngs) {
-        L.polyline(hazardousOriginalLatLngs, {
+    dangerousShown.forEach((candidate) => {
+        candidate.hits.forEach((h) => hazardZones.set(h.id, h));
+        const line = L.polyline(candidate.latLngs, {
             color: '#E53935',
             weight: 5,
-            opacity: 0.72,
-            dashArray: '9, 9'
+            opacity: 0.92,
+            dashArray: '1, 10',
+            lineCap: 'round'
         })
-            .bindPopup('<strong>Blocked / Hazardous Route</strong><br>Avoided due to active hazard.')
+            .bindPopup(`<strong>Dangerous route</strong><br>Passes through ${hazardNames(candidate.hits)}. Do not take this route.`)
             .addTo(routeLayerGroup);
-    }
+        fitLayers.push(line);
+    });
 
-    avoidedHazards.forEach((hazard) => {
+    hazardZones.forEach((hazard) => {
         L.circle(hazard.position, {
-            radius: avoidRadius,
+            radius: getHazardAvoidRadiusMeters(hazard),
             color: '#E53935',
             weight: 2,
             fillColor: '#E53935',
@@ -1472,67 +1563,72 @@ async function calculateSafeRoute(isLiveUpdate = false) {
             .addTo(routeLayerGroup);
     });
 
-    const safeColor = partialAvoidance ? '#FB8C00' : '#2E7D32';
-    const safeCoreColor = partialAvoidance ? '#FFB74D' : '#4CAF50';
+    if (chosen) {
+        L.polyline(chosen.latLngs, { color: '#12261E', weight: 9, opacity: 0.55 }).addTo(routeLayerGroup);
+        fitLayers.push(
+            L.polyline(chosen.latLngs, { color: '#4CAF50', weight: 6, opacity: 0.96 }).addTo(routeLayerGroup)
+        );
+    }
 
-    L.polyline(chosenLatLngs, {
-        color: '#12261E',
-        weight: 9,
-        opacity: 0.55
-    }).addTo(routeLayerGroup);
-
-    const safePolyline = L.polyline(chosenLatLngs, {
-        color: safeCoreColor,
-        weight: 6,
-        opacity: 0.96
-    }).addTo(routeLayerGroup);
-
+    const endpointColor = chosen ? '#2E7D32' : '#E53935';
     L.marker(originCoords, { icon: createRouteEndpointIcon('A', '#12261E') })
         .bindPopup(`<strong>Start:</strong> ${originText}`)
         .addTo(routeLayerGroup);
-
-    L.marker(destCoords, { icon: createRouteEndpointIcon('B', safeColor) })
+    L.marker(destCoords, { icon: createRouteEndpointIcon('B', endpointColor) })
         .bindPopup(`<strong>Destination:</strong> ${destText}`)
         .addTo(routeLayerGroup);
 
-    const routeBounds = safePolyline.getBounds();
-    if (routeBounds.isValid()) {
-        map.fitBounds(routeBounds, { padding: [110, 140], maxZoom: 16 });
+    if (fitLayers.length) {
+        const routeBounds = L.featureGroup(fitLayers).getBounds();
+        if (routeBounds.isValid()) {
+            map.fitBounds(routeBounds, { padding: [110, 140], maxZoom: 16 });
+        }
     }
 
-    const durationText = formatRouteDuration(chosenRoute.duration);
-    const distanceText = formatRouteDistance(chosenRoute.distance);
-    routeMetrics.textContent = `${durationText} · ${distanceText}`;
+    // ---- status panel ----
+    if (chosen) {
+        const durationText = formatRouteDuration(chosen.route.duration);
+        const distanceText = formatRouteDistance(chosen.route.distance);
+        routeMetrics.textContent = `${durationText} · ${distanceText}`;
 
-    const firstStep = chosenRoute.legs?.[0]?.steps?.[0];
-    const nextInstruction = firstStep?.maneuver?.instruction
-        ? `Next: ${stripHtml(firstStep.maneuver.instruction)}`
-        : '';
-    routeNextStep.textContent = nextInstruction;
+        const firstStep = chosen.route.legs?.[0]?.steps?.[0];
+        routeNextStep.textContent = firstStep?.maneuver?.instruction
+            ? `Next: ${stripHtml(firstStep.maneuver.instruction)}`
+            : '';
 
-    if (hazardousOriginalLatLngs && avoidedHazards.length > 0) {
-        const names = avoidedHazards
-            .map((h) => `${hazardData[h.hazardKey]?.incidentName || 'Hazard'} (${h.location || 'nearby'})`)
-            .join(', ');
-        routeStatusBadge.className = 'route-status-badge rerouted';
-        routeStatusBadge.textContent = '⚠️ REROUTED AROUND HAZARD';
-        routeStatusMessage.textContent = `Safe ${routeState.profile} detour avoiding ${names}. Dashed red line shows the blocked path.`;
+        // Walkers may pass accidents; just tell them to stay alert.
+        const accidentsOnPath = profile === 'walking'
+            ? hazardsWithinRoute(chosen.latLngs, activeHazards.filter((h) => h.hazardKey === 'accidents'))
+            : [];
+        const accidentNote = accidentsOnPath.length
+            ? ` Your walking route passes an accident scene (${hazardNames(accidentsOnPath)}) — stay alert and keep clear of responders.`
+            : '';
 
-        warningTitle.textContent = 'REROUTED';
-        warningText.textContent = `Safe detour active (${durationText}) avoiding ${names}.`;
-    } else if (partialAvoidance && avoidedHazards.length > 0) {
-        const names = avoidedHazards
-            .map((h) => `${hazardData[h.hazardKey]?.incidentName || 'Hazard'} (${h.location || 'nearby'})`)
-            .join(', ');
-        routeStatusBadge.className = 'route-status-badge warning';
-        routeStatusBadge.textContent = '⚠️ HAZARD ON ROUTE';
-        routeStatusMessage.textContent = `Active ${names} detected nearby with no side-street bypass. Proceed with caution.`;
+        if (primary.hits.length > 0) {
+            const names = hazardNames(primary.hits);
+            routeStatusBadge.className = 'route-status-badge rerouted';
+            routeStatusBadge.textContent = '⚠️ REROUTED AROUND HAZARD';
+            routeStatusMessage.textContent = `Safe ${modeLabel} route found, avoiding ${names}. The red dotted line is the dangerous route — do not take it.${accidentNote}`;
+            showWarning('REROUTED', `Safe ${modeLabel} detour active (${durationText}) avoiding ${names}.`);
+        } else {
+            routeStatusBadge.className = 'route-status-badge clear';
+            routeStatusBadge.textContent = '✓ SAFE ROUTE';
+            const base = isLiveUpdate
+                ? 'Hazard cleared — fastest direct route is now open.'
+                : 'No active hazards detected along this route.';
+            const altNote = dangerousShown.length
+                ? ' The red dotted line shows another route that is NOT safe.'
+                : '';
+            routeStatusMessage.textContent = `${base}${altNote}${accidentNote}`;
+        }
     } else {
-        routeStatusBadge.className = 'route-status-badge clear';
-        routeStatusBadge.textContent = '✓ SAFE ROUTE';
-        routeStatusMessage.textContent = isLiveUpdate
-            ? 'Hazard cleared — fastest direct route is now open.'
-            : 'No active hazards detected along this route.';
+        const names = hazardNames([...hazardZones.values()]);
+        routeStatusBadge.className = 'route-status-badge nosafe';
+        routeStatusBadge.textContent = '⛔ NO SAFE ROUTE';
+        routeMetrics.textContent = 'No safe way';
+        routeStatusMessage.textContent = `There is no safe way to get to this destination by ${modeLabel}. Every available route passes through ${names}. Avoid the trip or wait until the hazard is cleared. The dangerous routes are marked with red dotted lines.`;
+        routeNextStep.textContent = 'If you must go, proceed with extreme caution and never drive, bike or walk into fire, flood or landslide areas.';
+        showWarning('NO SAFE ROUTE', `No safe ${modeLabel} route to your destination. Proceed with caution — avoid the red dotted routes.`);
     }
 }
 
@@ -1733,42 +1829,77 @@ function handleLocationInput() {
     }, 220);
 }
 
+const suggestionCache = new Map();
+
+async function fetchMapboxSuggestions(query) {
+    try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&country=ph&bbox=124.4,8.2,125.0,8.7&proximity=124.6491,8.4859&autocomplete=true&types=poi,address,place,locality,neighborhood&limit=8`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.features || [])
+            .filter((f) => isCagayanDeOroFeature(f))
+            .map((f) => ({
+                title: f.text,
+                subtitle: f.place_name.replace(/,\s*Philippines$/i, ''),
+                position: [f.center[1], f.center[0]]
+            }));
+    } catch (err) {
+        console.warn('Mapbox autocomplete failed:', err);
+        return [];
+    }
+}
+
+// OpenStreetMap search knows brands and landmarks (Jollibee, schools, malls) well.
+async function fetchOsmSuggestions(query) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&viewbox=124.4,8.7,125.0,8.2&bounded=1&countrycodes=ph&limit=8&accept-language=en`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const rows = await res.json();
+        return (Array.isArray(rows) ? rows : [])
+            .map((r) => ({
+                title: r.name || String(r.display_name || '').split(',')[0],
+                subtitle: String(r.display_name || '').replace(/,\s*Philippines$/i, ''),
+                position: [parseFloat(r.lat), parseFloat(r.lon)]
+            }))
+            .filter((item) => item.title && Number.isFinite(item.position[0]) && isInsideCagayanDeOroBounds(item.position));
+    } catch (err) {
+        console.warn('OSM autocomplete failed:', err);
+        return [];
+    }
+}
+
 async function queryCdoSuggestions(query) {
-    const qLower = query.toLowerCase();
+    const trimmed = query.trim();
+    const qLower = trimmed.toLowerCase();
+    if (!qLower) return [];
+    if (suggestionCache.has(qLower)) return suggestionCache.get(qLower);
 
     const localMatches = cdoLocalPlaces
-        .filter((place) => place.name.toLowerCase().includes(qLower) || place.sub.toLowerCase().includes(qLower))
-        .map((place) => ({
-            title: place.name,
-            subtitle: place.sub,
-            position: place.position
-        }));
+        .filter((place) => [place.name, place.sub, ...(place.aliases || [])]
+            .some((text) => text.toLowerCase().includes(qLower)))
+        .map((place) => ({ title: place.name, subtitle: place.sub, position: place.position }));
 
-    let apiMatches = [];
-    try {
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&country=ph&bbox=124.4,8.2,125.0,8.7&proximity=124.6491,8.4859&autocomplete=true&limit=5`;
-        const res = await fetch(url);
-        if (res.ok) {
-            const data = await res.json();
-            apiMatches = (data.features || [])
-                .filter((f) => isCagayanDeOroFeature(f, query))
-                .map((f) => ({
-                    title: f.text,
-                    subtitle: f.place_name.replace(/,\s*Philippines$/i, ''),
-                    position: [f.center[1], f.center[0]]
-                }));
-        }
-    } catch (err) {
-        console.warn('Autocomplete lookup failed:', err);
-    }
+    const mentionsCity = /cagayan|\bcdo\b/i.test(trimmed);
+    const [mapboxPlain, mapboxCity, osm] = await Promise.all([
+        fetchMapboxSuggestions(trimmed),
+        // Adding the city name surfaces brand/chain branches (e.g. "Jollibee") that a plain query can miss.
+        mentionsCity ? Promise.resolve([]) : fetchMapboxSuggestions(`${trimmed} Cagayan de Oro`),
+        fetchOsmSuggestions(trimmed)
+    ]);
 
+    // De-duplicate by name + location, NOT by name, so several branches of one brand all show up.
     const seen = new Set();
-    return [...localMatches, ...apiMatches].filter((item) => {
-        const key = item.title.toLowerCase();
+    const merged = [...localMatches, ...mapboxPlain, ...mapboxCity, ...osm].filter((item) => {
+        const key = `${item.title.toLowerCase()}|${item.position[0].toFixed(3)},${item.position[1].toFixed(3)}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-    }).slice(0, 5);
+    }).slice(0, 8);
+
+    if (merged.length) suggestionCache.set(qLower, merged);
+    return merged;
 }
 
 async function fetchLocationSuggestions(query) {
@@ -2587,32 +2718,39 @@ function isInsideCagayanDeOroBounds(position) {
         longitude >= cagayanDeOroBounds.west && longitude <= cagayanDeOroBounds.east;
 }
 
-function isCagayanDeOroFeature(feature, requestedLocation) {
+function isCagayanDeOroFeature(feature) {
     if (!feature || !Array.isArray(feature.center) || feature.center.length !== 2) return false;
 
     const position = [feature.center[1], feature.center[0]];
     if (!isInsideCagayanDeOroBounds(position)) return false;
 
-    const normalizePlaceName = (value) => value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-    const expectedTokens = normalizePlaceName(requestedLocation || '')
-        .replace(/\bcagayan de oro(?: city)?\b/g, ' ')
-        .replace(/\b(?:cdo|philippines|in|within|near|at|around|the)\b/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .split(' ')
-        .filter((token) => token.length > 1 || /^\d+$/.test(token));
-    const featureName = normalizePlaceName(`${feature.text || ''} ${feature.place_name || ''}`);
-    const featureTokens = new Set(featureName.split(' '));
-    if (expectedTokens.some((token) => !featureTokens.has(token))) return false;
-
     const locationContext = [feature.text, feature.place_name, ...(feature.context || []).map((item) => item.text)]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
-    return locationContext.includes('cagayan de oro');
+    if (locationContext.includes('cagayan de oro')) return true;
+
+    // Some points of interest omit the city in their context; accept them inside the city's core area.
+    return position[0] >= 8.38 && position[0] <= 8.58 && position[1] >= 124.55 && position[1] <= 124.78;
 }
 
+let isSubmittingReport = false;
+
+// Wrapper: blocks double submits and shows a "Saving report…" state while uploading.
 async function handleHazardSubmit(event) {
+    event.preventDefault();
+    if (isSubmittingReport) return;
+    isSubmittingReport = true;
+    setSaveButtonState(true);
+    try {
+        await submitHazardReport(event);
+    } finally {
+        isSubmittingReport = false;
+        setSaveButtonState(false);
+    }
+}
+
+async function submitHazardReport(event) {
     event.preventDefault();
 
     const hazardKey = hazardTypeInput.value;
@@ -2669,11 +2807,31 @@ async function handleHazardSubmit(event) {
         resolvedAt: ''
     };
     hazardReports.push(report);
-    try {
-        await saveHazardReport(report);
-    } catch (error) {
+    // The report is already stored on this device at this point. The cloud upload can stall
+    // (slow network, Firebase rules, Storage not set up), so never let the form wait on it forever.
+    const canUpload = Boolean(firebaseClient && firebaseUser);
+    const uploadPromise = saveHazardReport(report).then(() => 'done', (error) => {
         console.error('Could not sync hazard report:', error);
-        window.alert('Your report was saved on this device, but could not sync to Firebase.');
+        return 'failed';
+    });
+    const outcome = await Promise.race([
+        uploadPromise,
+        new Promise((resolve) => setTimeout(() => resolve('slow'), 10000))
+    ]);
+
+    if (!canUpload || outcome === 'failed') {
+        showToast('Report saved on this device, but it could not be uploaded yet. Check your connection.', 'warning', 6500);
+    } else if (outcome === 'slow') {
+        showToast('Report saved on this device. Still uploading in the background…', 'warning', 5000);
+        uploadPromise.then((result) => {
+            if (result === 'done') {
+                showToast('✓ Report finished uploading. Thank you for keeping others safe!', 'success');
+            } else {
+                showToast('Upload failed. The report is saved on this device and will retry next time you sign in.', 'warning', 7000);
+            }
+        });
+    } else {
+        showToast('✓ Report saved and uploaded. Thank you for keeping others safe!', 'success');
     }
 
     activeFeedHazardKey = hazardKey;
@@ -2699,12 +2857,13 @@ function endSheetDrag() {
     if (!isDragging) return;
 
     const deltaY = currentY - startY;
+    const state = getSheetState();
 
     if (deltaY < -35) {
-        pullUpSection.classList.add('expanded');
+        setSheetState(state === 'collapsed' ? 'default' : 'expanded');
         suppressNextHandleClick = true;
     } else if (deltaY > 35) {
-        pullUpSection.classList.remove('expanded');
+        setSheetState(state === 'expanded' ? 'default' : 'collapsed');
         suppressNextHandleClick = true;
     }
 
@@ -2713,6 +2872,11 @@ function endSheetDrag() {
 
 pullUpSection.addEventListener('touchstart', (e) => {
     if (e.target.closest('.pullup-scroll-body') && !pullUpSection.classList.contains('expanded')) {
+        return;
+    }
+    // While the expanded list is scrolled, swiping down should scroll it, not collapse the drawer.
+    const scrollBody = pullUpSection.querySelector('.pullup-scroll-body');
+    if (pullUpSection.classList.contains('expanded') && scrollBody && scrollBody.scrollTop > 0 && e.target.closest('.pullup-scroll-body')) {
         return;
     }
     startSheetDrag(e.touches[0].clientY);
@@ -2738,6 +2902,12 @@ pullUpHandle.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         toggleSheet();
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSheetState(getSheetState() === 'expanded' ? 'default' : 'collapsed');
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSheetState(getSheetState() === 'collapsed' ? 'default' : 'expanded');
     }
 });
 
