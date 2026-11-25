@@ -95,6 +95,7 @@ const FIREBASE_CONFIG = {
 
 let firebaseClient = null;
 let firebaseUser = null;
+let roleSetupPending = false;
 const AUTH_CACHE_PREFIX = 'beacon.account.';
 
 function accountCacheKey(section) {
@@ -110,7 +111,7 @@ function saveLocalAppData() {
         }));
         localStorage.setItem(accountCacheKey('reports'), JSON.stringify(hazardReports));
         localStorage.setItem(accountCacheKey('defaultStatuses'), JSON.stringify(
-            Object.fromEntries(defaultHazards.map((hazard) => [hazard.id, { status: hazard.status, resolvedAt: hazard.resolvedAt || '' }]))
+            Object.fromEntries(defaultHazards.map((hazard) => [hazard.id, { status: hazard.status, resolvedAt: hazard.resolvedAt || '', isHidden: !!hazard.isHidden }]))
         ));
         localStorage.setItem(accountCacheKey('history'), JSON.stringify(resolvedHistory));
     } catch (error) {
@@ -177,46 +178,53 @@ async function initializeFirebase() {
         authSdk.onAuthStateChanged(auth, async (user) => {
             firebaseUser = user;
             if (!user) {
+                roleSetupPending = false;
+                document.getElementById('roleSetupOverlay')?.remove();
                 userProfile.signedIn = false;
                 userProfile.uid = '';
+                userProfile.role = 'regular';
+                document.getElementById('adminDashboardPanel')?.classList.remove('active');
                 document.getElementById('authGate').hidden = false;
                 if (message) { message.classList.remove('error'); message.textContent = 'Sign in to continue.'; }
                 updateTopBarProfileIcon();
+                renderProfilePanel();
                 return;
             }
-              userProfile.uid = user.uid;
+            userProfile.uid = user.uid;
             userProfile.signedIn = true;
             userProfile.name = user.displayName || user.email || 'Beacon member';
             userProfile.email = user.email || '';
             userProfile.avatarUrl = user.photoURL || '';
             document.getElementById('authGate').hidden = true;
             try {
-                const cachedProfile = JSON.parse(localStorage.getItem(accountCacheKey('profile')) || 'null');
-                if (cachedProfile) Object.assign(userProfile, cachedProfile);
                 const profileRef = dbSdk.doc(db, 'users', user.uid);
                 const profileSnapshot = await dbSdk.getDoc(profileRef);
                 if (profileSnapshot.exists()) {
                     const profile = profileSnapshot.data();
                     userProfile.name = profile.name || userProfile.name;
-                    userProfile.role = profile.role || 'regular';
+                    userProfile.role = profile.role === 'responder' ? 'responder' : 'regular';
                     userProfile.email = profile.email || userProfile.email;
                     userProfile.area = profile.area || 'Cagayan de Oro City';
                     userProfile.avatarUrl = profile.photoURL || userProfile.avatarUrl;
+                    await loadAccountData();
+                    finishAuthenticatedSession();
                 } else {
-                    await persistProfileToCloud();
+                    // A Google identity without a Beacon profile is a first-time Beacon signup.
+                    // Ask for the account type before creating the Firestore profile.
+                    userProfile.role = 'regular';
+                    showRoleSetup();
                 }
-                await loadAccountData();
             } catch (error) {
                 console.warn('Firestore could not be reached; restoring this account from browser storage:', error);
                 loadLocalAccountData();
+                // Without a verified Firestore profile, fail closed to regular-user access.
+                userProfile.role = 'regular';
+                finishAuthenticatedSession();
+                if (message) {
+                    message.classList.add('error');
+                    message.textContent = 'Could not verify your Beacon account type. Reconnect and sign in again.';
+                }
             }
-            saveLocalAppData();
-            updateTopBarProfileIcon();
-            updateCategoryCards();
-            renderHazardMarkers();
-            renderExpandedFeed();
-            renderProfilePanel();
-            if (message) message.textContent = '';
         });
     } catch (error) {
         console.error('Firebase initialization failed:', error);
@@ -225,6 +233,83 @@ async function initializeFirebase() {
             message.textContent = 'Firebase could not connect. Check the app setup and internet connection.';
         }
     }
+}
+
+function showRoleSetup() {
+    roleSetupPending = true;
+    document.getElementById('roleSetupOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'roleSetupOverlay';
+    overlay.className = 'role-setup-overlay';
+    overlay.innerHTML = `
+        <section class="role-setup-card" role="dialog" aria-modal="true" aria-labelledby="roleSetupTitle">
+            <p class="auth-eyebrow">WELCOME TO BEACON</p>
+            <h2 id="roleSetupTitle">Choose your account type</h2>
+            <p>Choose how you will use Beacon. This choice will be saved to your account.</p>
+            <button type="button" class="role-choice-btn" data-role="regular">
+                <strong>Regular User</strong><span>Report hazards, view incident updates, and use safety features.</span>
+            </button>
+            <button type="button" class="role-choice-btn responder-choice" data-role="responder">
+                <strong>Emergency Responder</strong><span>Access the Admin Dashboard, manage the incident queue, and remove incidents.</span>
+            </button>
+            <p class="role-setup-note">You can’t change this choice later from Settings.</p>
+        </section>`;
+    overlay.addEventListener('click', async (event) => {
+        const choice = event.target.closest('[data-role]');
+        if (!choice || !overlay.contains(choice) || !roleSetupPending) return;
+        overlay.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+        await completeRoleSetup(choice.dataset.role);
+    });
+    document.body.appendChild(overlay);
+}
+
+async function completeRoleSetup(role) {
+    if (!roleSetupPending || !firebaseUser || !firebaseClient) return;
+    userProfile.role = role === 'responder' ? 'responder' : 'regular';
+    let profileSaved = false;
+    try {
+        const profile = {
+            uid: firebaseUser.uid, name: userProfile.name, role: userProfile.role,
+            email: userProfile.email, area: userProfile.area, photoURL: userProfile.avatarUrl,
+            updatedAt: firebaseClient.dbSdk.serverTimestamp()
+        };
+        await firebaseClient.dbSdk.setDoc(
+            firebaseClient.dbSdk.doc(firebaseClient.db, 'users', firebaseUser.uid), profile, { merge: true }
+        );
+        profileSaved = true;
+        saveLocalAppData();
+        try { await loadAccountData(); }
+        catch (dataError) { console.warn('Account type saved, but incident data could not be refreshed:', dataError); }
+        roleSetupPending = false;
+        document.getElementById('roleSetupOverlay')?.remove();
+        finishAuthenticatedSession();
+    } catch (error) {
+        console.error('Could not save the selected Beacon account type:', error);
+        if (profileSaved) {
+            roleSetupPending = false;
+            document.getElementById('roleSetupOverlay')?.remove();
+            finishAuthenticatedSession();
+            return;
+        }
+        userProfile.role = 'regular';
+        const note = document.querySelector('#roleSetupOverlay .role-setup-note');
+        if (note) note.textContent = 'Your choice could not be saved. Check your connection and try again.';
+        document.querySelectorAll('#roleSetupOverlay button').forEach((button) => { button.disabled = false; });
+    }
+}
+
+function finishAuthenticatedSession() {
+    if (userProfile.role !== 'responder') {
+        document.getElementById('adminDashboardPanel')?.classList.remove('active');
+    }
+    saveLocalAppData();
+    updateTopBarProfileIcon();
+    updateCategoryCards();
+    renderHazardMarkers();
+    renderExpandedFeed();
+    renderProfilePanel();
+    const message = document.getElementById('authMessage');
+    if (message) message.textContent = '';
 }
 
 function loadLocalAccountData() {
@@ -265,7 +350,7 @@ async function loadAccountData() {
         const data = docSnapshot.data();
         if (data.isDefaultHazard) {
             const sample = defaultHazards.find((hazard) => hazard.id === docSnapshot.id);
-            if (sample && data.status) Object.assign(sample, { status: data.status, resolvedAt: data.resolvedAt || '' });
+            if (sample) Object.assign(sample, { status: data.status || sample.status, resolvedAt: data.resolvedAt || '', isHidden: !!data.isHidden });
             return;
         }
         const report = { id: data.id || docSnapshot.id, ...data };
@@ -304,7 +389,7 @@ async function saveHazardReport(report, isDefaultHazard = false) {
     const dbSdk = firebaseClient.dbSdk;
     const recordId = String(report.id);
     const record = isDefaultHazard ? { isDefaultHazard: true, id: recordId, hazardKey: report.hazardKey,
-        status: report.status, resolvedAt: report.resolvedAt || '', updatedAt: dbSdk.serverTimestamp() }
+        status: report.status, resolvedAt: report.resolvedAt || '', isHidden: !!report.isHidden, updatedAt: dbSdk.serverTimestamp() }
         : { ...report, id: recordId, reporterUid: report.reporterUid || firebaseUser.uid,
             updatedAt: dbSdk.serverTimestamp() };
     if (!isDefaultHazard && typeof report.photoUrl === 'string' && report.photoUrl.startsWith('data:')) {
@@ -661,7 +746,8 @@ function getAllHazards() {
             position: report.position,
             color: report.color,
             photoUrl: report.photoUrl,
-            status: report.status
+            status: report.status,
+            isHidden: !!report.isHidden
         })),
         ...defaultHazards.map((item) => ({
             id: item.id,
@@ -676,9 +762,10 @@ function getAllHazards() {
             position: item.position,
             color: item.color,
             photoUrl: item.photoUrl || '',
-            status: item.status
+            status: item.status,
+            isHidden: !!item.isHidden
         }))
-    ];
+    ].filter((item) => !item.isHidden);
 }
 
 function renderExpandedFeed() {
@@ -884,6 +971,7 @@ function renderCategoryFeed(hazardKey) {
                 }
             });
         }
+
 
         // Clicking the card/photo focuses that incident on the map
         postEl.addEventListener('click', () => {
@@ -2110,7 +2198,7 @@ function renderProfilePanel() {
             <div class="profile-actions">
                 <button type="button" onclick="openResponseHistory()">Response History</button>
                 <button type="button" onclick="openSettings()">Settings</button>
-                <button type="button" onclick="openAdminDashboard()">Admin Dashboard</button>
+                ${userProfile.role === 'responder' ? '<button type="button" onclick="openAdminDashboard()">Admin Dashboard</button>' : ''}
             </div>
         </div>
     `;
@@ -2188,14 +2276,6 @@ function renderSettingsPanel() {
                     <div class="settings-field">
                         <label for="settingsNameInput">Full Name</label>
                         <input id="settingsNameInput" type="text" value="${userProfile.name.replace(/"/g, '&quot;')}" required/>
-                    </div>
-
-                    <div class="settings-field">
-                        <label for="settingsRoleSelect">Account Role</label>
-                        <select id="settingsRoleSelect">
-                            <option value="responder" ${userProfile.role === 'responder' ? 'selected' : ''}>Emergency Responder</option>
-                            <option value="regular" ${userProfile.role === 'regular' ? 'selected' : ''}>Regular User</option>
-                        </select>
                     </div>
 
                     <div class="settings-field">
@@ -2282,7 +2362,6 @@ async function saveSettingsProfile(event) {
     event.preventDefault();
 
     const nameVal = document.getElementById('settingsNameInput')?.value.trim();
-    const roleVal = document.getElementById('settingsRoleSelect')?.value || 'regular';
     const emailVal = document.getElementById('settingsEmailInput')?.value.trim();
     const areaVal = document.getElementById('settingsAreaInput')?.value.trim();
 
@@ -2292,7 +2371,6 @@ async function saveSettingsProfile(event) {
     }
 
     userProfile.name = nameVal;
-    userProfile.role = roleVal;
     userProfile.email = emailVal || userProfile.email;
     userProfile.area = areaVal || userProfile.area;
 
@@ -2405,6 +2483,10 @@ function closeResponseHistory(returnToProfile = false) {
 
 // ================= ADMIN DASHBOARD PANEL =================
 function openAdminDashboard() {
+    if (!userProfile.signedIn || userProfile.role !== 'responder') {
+        window.alert('The Admin Dashboard is available to Emergency Responder accounts only.');
+        return;
+    }
     closeProfile();
 
     let panel = document.getElementById('adminDashboardPanel');
@@ -2450,7 +2532,9 @@ function openAdminDashboard() {
                 const item = button.closest('.admin-incident-item');
                 if (!item || !item.dataset.hazardId) return;
 
-                if (button.dataset.action === 'undo') {
+                if (button.dataset.action === 'remove') {
+                    removeHazardFromFeeds(item.dataset.hazardId);
+                } else if (button.dataset.action === 'undo') {
                     undoResolveIncidentById(item.dataset.hazardId);
                 } else {
                     resolveIncidentById(item.dataset.hazardId);
@@ -2514,11 +2598,41 @@ function renderAdminIncidentList() {
         button.textContent = isResolved ? 'Undo' : 'Mark as Resolved';
 
         item.append(main, button);
+        if (userProfile.signedIn && userProfile.role === 'responder') {
+            const removeButton = document.createElement('button');
+            removeButton.className = 'resolve-btn remove-incident-btn';
+            removeButton.type = 'button';
+            removeButton.dataset.action = 'remove';
+            removeButton.textContent = 'Remove';
+            item.appendChild(removeButton);
+        }
         list.appendChild(item);
     });
 
     const activeFilter = panel.querySelector('.filter-chip.active')?.dataset.filter || 'all';
     filterAdminIncidents(panel, activeFilter);
+}
+
+function removeHazardFromFeeds(hazardId) {
+    if (!userProfile.signedIn || userProfile.role !== 'responder') {
+        window.alert('Only signed-in responder accounts can remove incidents.');
+        return;
+    }
+    const target = findHazardRecord(hazardId);
+    if (!target || target.isHidden) return;
+    const confirmed = window.confirm('Remove this incident from Beacon? It will disappear from the incident triage queue, recent reports, category feeds, and map for all users.');
+    if (!confirmed) return;
+
+    target.isHidden = true;
+    saveHazardReport(target, hazardId.startsWith('default-')).catch((error) => {
+        console.error('Could not sync removed incident:', error);
+        window.alert('The incident was hidden on this device, but could not sync to Firebase.');
+    });
+    updateCategoryCards();
+    renderHazardMarkers();
+    renderExpandedFeed();
+    renderAdminIncidentList();
+    refreshActiveRouteIfNeeded();
 }
 
 function findHazardRecord(hazardId) {

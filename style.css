@@ -2358,3 +2358,91 @@ body {
 #PullUpSection.collapsed .pullup-collapse-btn {
   transform: rotate(180deg);
 }
+/* Compact, single-column recent reports */
+.expanded-feed-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+}
+
+.expanded-feed-item {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+
+.admin-incident-item {
+  flex-wrap: wrap;
+}
+
+.admin-incident-item .incident-main {
+  flex: 1 1 100%;
+}
+
+.remove-incident-btn {
+  background: #fff;
+  color: #8b2525;
+  border: 1px solid rgba(139, 37, 37, 0.25);
+}
+
+@media (max-width: 600px) {
+  #PullUpSection.expanded .expanded-feed-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .expanded-feed-item {
+    align-items: flex-start;
+  }
+}
+
+/* ================= FIRST-SIGN-IN ACCOUNT TYPE SELECTION ================= */
+.role-setup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  overflow-y: auto;
+  background: rgba(8, 18, 13, .88);
+  backdrop-filter: blur(8px);
+}
+.role-setup-card {
+  width: min(100%, 470px);
+  padding: 30px;
+  border: 1px solid rgba(246, 243, 233, .18);
+  border-radius: 22px;
+  color: #12261E;
+  background: #F6F3E9;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .4);
+}
+.role-setup-card h2 { margin-top: 8px; font-size: 25px; }
+.role-setup-card > p:not(.auth-eyebrow):not(.role-setup-note) {
+  margin: 10px 0 20px;
+  color: #657267;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.role-choice-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 11px;
+  padding: 17px;
+  border: 1px solid #D8DDD1;
+  border-radius: 13px;
+  color: #26372D;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.role-choice-btn:hover { border-color: #527B5C; background: #F4F8F2; }
+.role-choice-btn:disabled { opacity: .65; cursor: wait; }
+.role-choice-btn strong { font-size: 15px; }
+.role-choice-btn span { color: #657267; font-size: 12px; line-height: 1.45; }
+.role-choice-btn.responder-choice { border-color: #A9BDAA; }
+.role-setup-note { margin-top: 17px; color: #657267; font-size: 11px; line-height: 1.45; }
+@media (max-width: 480px) {
+  .role-setup-card { padding: 23px; }
+  .role-setup-card h2 { font-size: 22px; }
+}
