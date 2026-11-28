@@ -96,6 +96,10 @@ const FIREBASE_CONFIG = {
 let firebaseClient = null;
 let firebaseUser = null;
 let roleSetupPending = false;
+let stopHazardReportsListener = null;
+let phoneConfirmationResult = null;
+let recaptchaVerifier = null;
+let emailAuthMode = 'login';
 const AUTH_CACHE_PREFIX = 'beacon.account.';
 
 function accountCacheKey(section) {
@@ -151,13 +155,165 @@ async function signInWithGoogle() {
         if (button) button.disabled = false;
         if (message) {
             message.classList.add('error');
-            message.textContent = error.code === 'auth/unauthorized-domain'
-                ? 'Add this app domain to Firebase Authentication authorized domains.'
-                : error.code === 'auth/popup-closed-by-user'
-                    ? 'Google sign-in was closed before it finished.'
-                    : error.message || 'Google sign-in failed.';
+            message.textContent = describeAuthError(error);
         }
     }
+}
+
+function openPhoneSignIn() {
+    const panel = document.getElementById('phoneSignInPanel');
+    document.getElementById('emailSignInPanel').hidden = true;
+    panel.hidden = false;
+    document.getElementById('authMessage').textContent = '';
+    document.getElementById('authMessage').classList.remove('error');
+    document.getElementById('phoneNumberInput').focus();
+}
+
+function openEmailSignIn() {
+    document.getElementById('phoneSignInPanel').hidden = true;
+    document.getElementById('emailSignInPanel').hidden = false;
+    document.getElementById('authMessage').textContent = '';
+    document.getElementById('authMessage').classList.remove('error');
+    document.getElementById('emailAuthAddress').focus();
+}
+
+function toggleEmailAuthMode() {
+    emailAuthMode = emailAuthMode === 'login' ? 'signup' : 'login';
+    const signup = emailAuthMode === 'signup';
+    document.getElementById('emailAuthSubmit').textContent = signup ? 'Create account' : 'Log in';
+    document.getElementById('emailAuthPassword').autocomplete = signup ? 'new-password' : 'current-password';
+    document.getElementById('emailModePrompt').textContent = signup ? 'Already have an account?' : 'New to Beacon?';
+    document.getElementById('emailModeToggle').textContent = signup ? 'Log in' : 'Create an account';
+    document.getElementById('authMessage').textContent = '';
+    document.getElementById('authMessage').classList.remove('error');
+}
+
+async function handleEmailAuthSubmit(event) {
+    event.preventDefault();
+    const emailInput = document.getElementById('emailAuthAddress');
+    const email = emailInput.value.trim();
+    const password = document.getElementById('emailAuthPassword').value;
+    const button = document.getElementById('emailAuthSubmit');
+    const message = document.getElementById('authMessage');
+    if (!email || !password || !emailInput.validity.valid) {
+        message.classList.add('error');
+        message.textContent = 'Enter a valid email address and password.';
+        return;
+    }
+    try {
+        if (!firebaseClient) throw new Error('Firebase is still connecting. Please try again.');
+        button.disabled = true;
+        message.classList.remove('error');
+        message.textContent = emailAuthMode === 'signup' ? 'Creating your account…' : 'Signing in…';
+        if (emailAuthMode === 'signup') {
+            await firebaseClient.authSdk.createUserWithEmailAndPassword(firebaseClient.auth, email, password);
+        } else {
+            await firebaseClient.authSdk.signInWithEmailAndPassword(firebaseClient.auth, email, password);
+        }
+    } catch (error) {
+        button.disabled = false;
+        message.classList.add('error');
+        message.textContent = describeAuthError(error);
+    }
+}
+
+async function sendPhoneVerificationCode() {
+    const button = document.getElementById('sendPhoneCode');
+    const message = document.getElementById('authMessage');
+    const input = document.getElementById('phoneNumberInput');
+    const phoneNumber = input.value.replace(/[\s()-]/g, '');
+    if (!/^\+[1-9]\d{7,14}$/.test(phoneNumber)) {
+        message.classList.add('error');
+        message.textContent = 'Enter a valid phone number with country code, for example +639123456789.';
+        input.focus();
+        return;
+    }
+    try {
+        if (!firebaseClient) throw new Error('Firebase is still connecting. Please try again.');
+        button.disabled = true;
+        message.classList.remove('error');
+        message.textContent = 'Sending a verification code…';
+        if (!recaptchaVerifier) {
+            recaptchaVerifier = new firebaseClient.authSdk.RecaptchaVerifier(
+                firebaseClient.auth, 'sendPhoneCode', { size: 'invisible' }
+            );
+        }
+        phoneConfirmationResult = await firebaseClient.authSdk.signInWithPhoneNumber(
+            firebaseClient.auth, phoneNumber, recaptchaVerifier
+        );
+        document.getElementById('phoneNumberStep').hidden = true;
+        document.getElementById('phoneVerificationStep').hidden = false;
+        message.textContent = `Verification code sent to ${phoneNumber}.`;
+        document.getElementById('phoneVerificationCode').focus();
+    } catch (error) {
+        recaptchaVerifier?.clear();
+        recaptchaVerifier = null;
+        button.disabled = false;
+        message.classList.add('error');
+        message.textContent = describeAuthError(error);
+    }
+}
+
+async function verifyPhoneCode() {
+    const code = document.getElementById('phoneVerificationCode').value.trim();
+    const message = document.getElementById('authMessage');
+    if (!phoneConfirmationResult) {
+        message.classList.add('error');
+        message.textContent = 'Request a verification code first.';
+        return;
+    }
+    if (!/^\d{6}$/.test(code)) {
+        message.classList.add('error');
+        message.textContent = 'Enter the 6-digit verification code.';
+        return;
+    }
+    try {
+        message.classList.remove('error');
+        message.textContent = 'Verifying your number…';
+        await phoneConfirmationResult.confirm(code);
+        phoneConfirmationResult = null;
+    } catch (error) {
+        message.classList.add('error');
+        message.textContent = describeAuthError(error);
+    }
+}
+
+function resetPhoneSignIn() {
+    phoneConfirmationResult = null;
+    recaptchaVerifier?.clear();
+    recaptchaVerifier = null;
+    document.getElementById('phoneNumberStep').hidden = false;
+    document.getElementById('phoneVerificationStep').hidden = true;
+    document.getElementById('phoneVerificationCode').value = '';
+    document.getElementById('sendPhoneCode').disabled = false;
+    const message = document.getElementById('authMessage');
+    message.classList.remove('error');
+    message.textContent = '';
+}
+
+function describeAuthError(error) {
+    const messages = {
+        'auth/unauthorized-domain': 'Add this app domain to Firebase Authentication authorized domains.',
+        'auth/popup-closed-by-user': 'The sign-in window was closed before it finished.',
+        'auth/popup-blocked': 'Allow pop-up windows for this site and try again.',
+        'auth/account-exists-with-different-credential': 'This email is already linked to another sign-in method. Sign in with that method first.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/invalid-credential': 'The email or password is incorrect.',
+        'auth/user-not-found': 'No account was found for that email. Choose Create an account to sign up.',
+        'auth/wrong-password': 'The password is incorrect.',
+        'auth/email-already-in-use': 'An account already uses that email. Log in instead.',
+        'auth/weak-password': 'Choose a password with at least 6 characters.',
+        'auth/operation-not-allowed': 'Enable this sign-in provider in Firebase Authentication settings.',
+        'auth/invalid-phone-number': 'That phone number is not valid. Include the country code, such as +63.',
+        'auth/missing-phone-number': 'Enter a phone number with its country code.',
+        'auth/invalid-verification-code': 'That code is incorrect. Check the SMS and try again.',
+        'auth/code-expired': 'That code has expired. Request a new verification code.',
+        'auth/captcha-check-failed': 'Phone verification could not complete. Refresh and try again.',
+        'auth/invalid-app-credential': 'Phone verification could not validate this app. Check the authorized domain and reCAPTCHA settings.',
+        'auth/too-many-requests': 'Too many attempts. Wait a while before trying again.',
+        'auth/quota-exceeded': 'Firebase SMS quota has been reached. Try again later or check the project plan.'
+    };
+    return messages[error.code] || error.message || 'Sign-in failed. Please try again.';
 }
 
 async function initializeFirebase() {
@@ -174,8 +330,15 @@ async function initializeFirebase() {
         const auth = authSdk.getAuth(app);
         const db = dbSdk.getFirestore(app);
         const storage = storageSdk.getStorage(app);
-        firebaseClient = { authSdk, dbSdk, storageSdk, auth, db, storage, provider: new authSdk.GoogleAuthProvider() };
+        firebaseClient = {
+            authSdk, dbSdk, storageSdk, auth, db, storage,
+            provider: new authSdk.GoogleAuthProvider()
+        };
         authSdk.onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                stopHazardReportsListener?.();
+                stopHazardReportsListener = null;
+            }
             firebaseUser = user;
             if (!user) {
                 roleSetupPending = false;
@@ -183,6 +346,19 @@ async function initializeFirebase() {
                 userProfile.signedIn = false;
                 userProfile.uid = '';
                 userProfile.role = 'regular';
+                document.getElementById('googleSignIn').disabled = false;
+                document.getElementById('emailAuthSubmit').disabled = false;
+                document.getElementById('sendPhoneCode').disabled = false;
+                document.getElementById('phoneSignInPanel').hidden = true;
+                document.getElementById('emailSignInPanel').hidden = true;
+                emailAuthMode = 'login';
+                document.getElementById('emailAuthSubmit').textContent = 'Log in';
+                document.getElementById('emailAuthPassword').autocomplete = 'current-password';
+                document.getElementById('emailModePrompt').textContent = 'New to Beacon?';
+                document.getElementById('emailModeToggle').textContent = 'Create an account';
+                phoneConfirmationResult = null;
+                recaptchaVerifier?.clear();
+                recaptchaVerifier = null;
                 document.getElementById('adminDashboardPanel')?.classList.remove('active');
                 document.getElementById('authGate').hidden = false;
                 if (message) { message.classList.remove('error'); message.textContent = 'Sign in to continue.'; }
@@ -381,6 +557,67 @@ async function loadAccountData() {
             catch (error) { console.warn(`Could not sync sample status ${hazard.id}:`, error); }
         }
     }
+    startHazardReportsListener();
+}
+
+function startHazardReportsListener() {
+    if (!firebaseClient || !firebaseUser) return;
+    stopHazardReportsListener?.();
+    const { dbSdk, db } = firebaseClient;
+    stopHazardReportsListener = dbSdk.onSnapshot(
+        dbSdk.collection(db, 'hazardReports'),
+        (snapshot) => {
+            const reportsById = new Map(hazardReports.map((report) => [String(report.id), report]));
+            snapshot.docs.forEach((docSnapshot) => {
+                const data = docSnapshot.data();
+                if (data.isDefaultHazard) {
+                    const sample = defaultHazards.find((hazard) => hazard.id === docSnapshot.id);
+                    if (sample) Object.assign(sample, {
+                        status: data.status || sample.status,
+                        resolvedAt: data.resolvedAt || '',
+                        isHidden: !!data.isHidden
+                    });
+                    return;
+                }
+                const report = { ...data, id: data.id || docSnapshot.id };
+                reportsById.set(String(report.id), report);
+            });
+            hazardReports.splice(0, hazardReports.length, ...reportsById.values());
+
+            const historyById = new Map(resolvedHistory.map((entry) => [entry.id, entry]));
+            [...defaultHazards, ...hazardReports].forEach((hazard) => {
+                const historyId = hazard.id.startsWith('default-') ? hazard.id : `report-${hazard.id}`;
+                if (hazard.status === 'resolved' && !historyById.has(historyId)) {
+                    const info = hazardData[hazard.hazardKey] || {};
+                    historyById.set(historyId, {
+                        id: historyId,
+                        title: info.incidentName || info.displayName || hazard.hazardKey,
+                        location: hazard.location || 'Cagayan de Oro City',
+                        resolvedAt: hazard.resolvedAt
+                            ? new Date(hazard.resolvedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                            : 'Previously resolved'
+                    });
+                } else if (hazard.status !== 'resolved') {
+                    historyById.delete(historyId);
+                }
+            });
+            resolvedHistory.splice(0, resolvedHistory.length, ...historyById.values());
+            saveLocalAppData();
+            if (userProfile.signedIn) {
+                updateCategoryCards();
+                renderHazardMarkers();
+                renderExpandedFeed();
+                renderAdminIncidentList();
+                renderResponseHistoryList();
+                if (activeFeedHazardKey) renderCategoryFeed(activeFeedHazardKey);
+                refreshActiveRouteIfNeeded();
+            }
+        },
+        (error) => {
+            console.error('Could not subscribe to shared hazard reports:', error);
+            showToast('Shared reports could not load. Check that Firestore rules allow signed-in reads.', 'warning', 7000);
+        }
+    );
 }
 
 async function saveHazardReport(report, isDefaultHazard = false) {
@@ -1081,12 +1318,8 @@ function setDefaultImages() {
     const logo = document.querySelector('.beaconlogo img');
 
     if (logo) {
-        logo.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="34" viewBox="0 0 120 34">
-                <rect width="120" height="34" rx="8" fill="#F6F3E9"/>
-                <text x="16" y="22" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#12261E">Beacon</text>
-            </svg>
-        `);
+        logo.src = 'beacon-logo-new.jpg';
+        logo.alt = 'Beacon Road Safety Intelligence Network';
     }
 
     updateTopBarProfileIcon();
