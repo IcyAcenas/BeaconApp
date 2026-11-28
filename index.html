@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beacon</title>
+    <title>Beacon | Road Safety Map</title>
+    <meta name="description" content="Beacon is a community road safety map for Cagayan de Oro, with shared incident reports and safer route planning."/>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>    
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="style.css"/>
@@ -12,11 +13,39 @@
 
      <section id="authGate" class="auth-gate" aria-labelledby="authTitle">
         <div class="auth-card">
-            <img src="beacon-logo.png" alt="Beacon" class="auth-logo"/>
+            <img src="beacon-logo-new.jpg" alt="Beacon Road Safety Intelligence Network" class="auth-logo"/>
             <p class="auth-eyebrow">ROAD SAFETY NETWORK</p>
             <h1 id="authTitle">Welcome to Beacon</h1>
-            <p class="auth-subtitle">Sign in with Google to report hazards and keep your profile and reports available across sessions.</p>
-            <button id="googleSignIn" class="google-button" type="button" onclick="signInWithGoogle()"><span class="google-g">G</span> Continue with Google</button>
+            <p class="auth-tagline">Find Your Way Forward</p>
+            <div class="auth-providers" aria-label="Sign-in options">
+                <button id="googleSignIn" class="auth-provider-button google-button" type="button" onclick="signInWithGoogle()"><span class="google-g">G</span> Continue with Google</button>
+                <button id="phoneSignIn" class="auth-provider-button phone-button" type="button" onclick="openPhoneSignIn()"><span aria-hidden="true">☎</span> Continue with phone number</button>
+                <button id="emailSignIn" class="auth-provider-button email-button" type="button" onclick="openEmailSignIn()"><span class="email-at" aria-hidden="true">@</span> Continue with email / password</button>
+            </div>
+            <div id="phoneSignInPanel" class="phone-signin-panel" hidden>
+                <div id="phoneNumberStep">
+                    <label for="phoneNumberInput">Phone number with country code</label>
+                    <input id="phoneNumberInput" type="tel" autocomplete="tel" placeholder="+63 912 345 6789"/>
+                    <button id="sendPhoneCode" type="button" class="phone-action-button" onclick="sendPhoneVerificationCode()">Send verification code</button>
+                </div>
+                <div id="phoneVerificationStep" hidden>
+                    <label for="phoneVerificationCode">Verification code</label>
+                    <input id="phoneVerificationCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code"/>
+                    <button type="button" class="phone-action-button" onclick="verifyPhoneCode()">Verify and continue</button>
+                    <button type="button" class="phone-back-button" onclick="resetPhoneSignIn()">Use a different number</button>
+                </div>
+                <div id="recaptcha-container"></div>
+            </div>
+            <div id="emailSignInPanel" class="email-signin-panel" hidden>
+                <form id="emailAuthForm" novalidate onsubmit="handleEmailAuthSubmit(event)">
+                    <label for="emailAuthAddress">Email address</label>
+                    <input id="emailAuthAddress" type="email" autocomplete="email" placeholder="you@example.com" required/>
+                    <label for="emailAuthPassword">Password</label>
+                    <input id="emailAuthPassword" type="password" autocomplete="current-password" minlength="6" placeholder="At least 6 characters" required/>
+                    <button id="emailAuthSubmit" type="submit" class="email-action-button">Log in</button>
+                </form>
+                <p class="email-mode-switch"><span id="emailModePrompt">New to Beacon?</span> <button id="emailModeToggle" type="button" onclick="toggleEmailAuthMode()">Create an account</button></p>
+            </div>
             <p id="authMessage" class="auth-message" role="status" aria-live="polite">Connecting to Firebase…</p>
         </div>
     </section> 
@@ -26,7 +55,7 @@
     <header class="top-bar">
 
         <div class="beaconlogo">
-            <img src="beacon-logo.png" alt="Beacon Logo"/>
+            <img src="beacon-logo-new.jpg" alt="Beacon Road Safety Intelligence Network"/>
         </div>
 
         <div class="searchbar-wrapper">
